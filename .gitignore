@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.Python
+
+# uv / venv
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+*.egg
+MANIFEST
+
+# uv lock is committed intentionally — do NOT add uv.lock here
+# (it ensures reproducible installs for all contributors)
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment & secrets
+.env
+!.env.example
+
+# Calibration data (generated locally — too large / machine-specific to commit)
+config/calibration/
+
+# Recorded datasets (can be very large)
+data/
+
+# Model checkpoints
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,21 @@
+# SO101 arm — leader / follower configuration
+# Edit serial ports to match your system (run `lerobot-find-port` after plugging in USB cables).
+# Camera indices may shift on reboot — use `lerobot-find-cameras opencv` to verify.
+
+arm_pair:
+  leader_port: "/dev/ttyUSB0"
+  follower_port: "/dev/ttyUSB1"
+  leader_id: "so101_leader"
+  follower_id: "so101_follower"
+
+cameras:
+  workspace:
+    index_or_path: 0   # typically the first camera connected; verify with lerobot-find-cameras
+    width: 1920
+    height: 1080
+    fps: 30
+  wrist:
+    index_or_path: 1   # second camera
+    width: 1920
+    height: 1080
+    fps: 30
