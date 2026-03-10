@@ -70,8 +70,8 @@ def main(
     follower_port: str = typer.Option("/dev/ttyACM0", help="Follower arm serial port."),
     workspace_cam: int = typer.Option(0, help="Workspace camera OpenCV index."),
     wrist_cam: int = typer.Option(2, help="Wrist camera OpenCV index."),
+    machine: str = typer.Option("beelzebub", help="CMDOP machine hostname to target."),
     timeout: int = typer.Option(300, help="Agent timeout in seconds."),
-    stream: bool = typer.Option(True, help="Stream agent output token-by-token."),
     dry_run: bool = typer.Option(False, help="Print the prompt without connecting."),
 ) -> None:
     """Orchestrate a manipulation task on the SO101 arm via OpenClaw."""
@@ -95,23 +95,21 @@ def main(
         )
         raise typer.Exit(1)
 
-    from openclaw import OpenClaw
-    from cmdop.models.agent import AgentType, AgentRunOptions
+    from openclaw import AsyncOpenClaw
+    from cmdop.models.agent import AgentType, AgentRunOptions, AgentResult
+    import asyncio
 
-    console.print("\n[dim]Connecting to CMDOP agent...[/dim]")
-    client = OpenClaw.remote(api_key=api_key)
+    async def _run():
+        async with AsyncOpenClaw.remote(api_key=api_key) as client:
+            await client.agent.set_machine(machine)
+            opts = AgentRunOptions(timeout_seconds=timeout)
+            result = await client.agent.run(prompt, agent_type=AgentType.TERMINAL, options=opts)
+            if result.text:
+                console.print(result.text)
+            if not result.success and result.error:
+                console.print(f"\n[bold red]Error:[/bold red] {result.error}")
 
-    options = AgentRunOptions(timeout_seconds=timeout)
-
-    if stream:
-        console.print("[dim]─── agent output ───[/dim]\n")
-        for event in client.agent.stream(prompt, agent_type=AgentType.TERMINAL, options=options):
-            if hasattr(event, "text") and event.text:
-                console.print(event.text, end="")
-        console.print()
-    else:
-        result = client.agent.run(prompt, agent_type=AgentType.TERMINAL, options=options)
-        console.print(result.text)
+    asyncio.run(_run())
 
     console.print("\n[bold green]Task complete.[/bold green]")
 
