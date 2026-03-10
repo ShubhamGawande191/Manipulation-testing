@@ -3,8 +3,8 @@
 # Camera indices may shift on reboot — use `lerobot-find-cameras opencv` to verify.
 
 arm_pair:
-  leader_port: "/dev/ttyUSB0"
-  follower_port: "/dev/ttyUSB1"
+  leader_port: "/dev/ttyACM1"
+  follower_port: "/dev/ttyACM0"
   leader_id: "so101_leader"
   follower_id: "so101_follower"
 
@@ -15,7 +15,7 @@ cameras:
     height: 1080
     fps: 30
   wrist:
-    index_or_path: 1   # second camera
+    index_or_path: 2   # second camera (video1/video3 are metadata nodes)
     width: 1920
     height: 1080
     fps: 30

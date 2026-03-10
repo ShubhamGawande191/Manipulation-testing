@@ -32,9 +32,9 @@ dev = [
 ]
 
 [project.scripts]
-calibrate = "robot_manipulator.scripts.calibrate:main"
-teleoperate = "robot_manipulator.scripts.teleoperate:main"
-pick-and-place = "robot_manipulator.scripts.pick_and_place:main"
+calibrate = "robot_manipulator.scripts.calibrate:app"
+teleoperate = "robot_manipulator.scripts.teleoperate:app"
+pick-and-place = "robot_manipulator.scripts.pick_and_place:app"
 
 [build-system]
 requires = ["hatchling"]
