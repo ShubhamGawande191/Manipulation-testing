@@ -14,7 +14,7 @@ dependencies = [
     "scipy>=1.14",
     # Config & environment
     "pydantic>=2.9",
-    "pydantic-settings>=2.6",
+    "pydantic-settings>=2.14.2",
     "python-dotenv>=1.0",
     # Rich terminal output
     "rich>=13.9",
