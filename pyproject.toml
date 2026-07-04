@@ -12,6 +12,13 @@ dependencies = [
     # Numerics / data
     "numpy>=2.0",
     "scipy>=1.14",
+    "pyarrow>=17",
+    # MIDI codec + event model (live ports need the `midi` extra's rtmidi backend)
+    "mido>=1.3",
+    # WebSocket client for the ROS2 bridge tasks (BridgeClient)
+    "websockets>=13",
+    # AprilTag detection (tasks/detect_apriltag.py, find_world_tag.py)
+    "pupil-apriltags>=1.0.4",
     # Config & environment
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -23,6 +30,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+midi = ["python-rtmidi>=1.5"]
+audio = ["sounddevice>=0.5"]
 dev = [
     "jupyterlab>=4.3",
     "ipywidgets>=8.1",
@@ -32,6 +41,7 @@ dev = [
 ]
 
 [project.scripts]
+bench-check = "robot_manipulator.scripts.bench_check:app"
 calibrate = "robot_manipulator.scripts.calibrate:app"
 teleoperate = "robot_manipulator.scripts.teleoperate:app"
 pick-and-place = "robot_manipulator.scripts.pick_and_place:app"
@@ -53,3 +63,5 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["hw: needs the physical bench (arm, MiniLab 3, cameras); run manually with -m hw"]
+addopts = "-m 'not hw'"
