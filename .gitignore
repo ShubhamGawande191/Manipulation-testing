@@ -53,3 +53,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Generated bench/calibration captures (machine-specific, regenerable)
+calibration_images/
+config/bench_state.json
+runs/

@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Python deps (uv lockfile). Grouped so alerts arrive as one weekly PR,
+  # not thirty — run `uv run pytest` on the PR branch before merging.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-deps:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
