@@ -22,31 +22,44 @@ from lerobot.teleoperators.so_leader.config_so_leader import SOLeaderTeleopConfi
 
 def build_follower_config(
     port: str,
+    robot_id: str = "my_so101_follower",
     workspace_cam_index: int = 0,
-    wrist_cam_index: int = 1,
+    wrist_cam_index: int = 2,
+    fps: int = 5,
+    width: int = 1920,
+    height: int = 1080,
+    cameras: bool = True,
 ) -> SOFollowerRobotConfig:
-    """Return a follower config with both cameras attached.
+    """Return a follower config with optional cameras attached.
 
     Cameras are registered inside the config so that ``lerobot-teleoperate``
     (and ``lerobot-record``) automatically capture frames without any extra
-    code.
+    code.  The *robot_id* must match the calibration file name under
+    ``~/.cache/huggingface/lerobot/calibration/robots/so_follower/``.
+
+    Set *cameras=False* to skip camera initialization (useful for joint-only
+    operations where camera setup overhead is unwanted).
     """
-    return SOFollowerRobotConfig(
-        port=port,
-        cameras={
+    cam_dict = {}
+    if cameras:
+        cam_dict = {
             "workspace": OpenCVCameraConfig(
                 index_or_path=workspace_cam_index,
-                fps=30,
-                width=1920,
-                height=1080,
+                fps=fps,
+                width=width,
+                height=height,
             ),
             "wrist": OpenCVCameraConfig(
                 index_or_path=wrist_cam_index,
-                fps=30,
-                width=1920,
-                height=1080,
+                fps=fps,
+                width=width,
+                height=height,
             ),
-        },
+        }
+    return SOFollowerRobotConfig(
+        id=robot_id,
+        port=port,
+        cameras=cam_dict,
     )
 
 

@@ -45,7 +45,9 @@ def main(
 
     def _run_follower() -> None:
         console.print("[bold cyan]Calibrating follower arm…[/bold cyan]")
-        console.print(f"  Port → [yellow]{follower_port}[/yellow]  ID → [yellow]{follower_id}[/yellow]\n")
+        console.print(
+            f"  Port → [yellow]{follower_port}[/yellow]  ID → [yellow]{follower_id}[/yellow]\n"
+        )
         subprocess.run(
             calibrate_cmd
             + [
@@ -58,7 +60,9 @@ def main(
 
     def _run_leader() -> None:
         console.print("[bold cyan]Calibrating leader arm…[/bold cyan]")
-        console.print(f"  Port → [yellow]{leader_port}[/yellow]  ID → [yellow]{leader_id}[/yellow]\n")
+        console.print(
+            f"  Port → [yellow]{leader_port}[/yellow]  ID → [yellow]{leader_id}[/yellow]\n"
+        )
         subprocess.run(
             calibrate_cmd
             + [
