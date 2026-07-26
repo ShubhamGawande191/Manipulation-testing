@@ -24,6 +24,22 @@
 - [ ] GitHub Projects board + prioritized issues (blocked on `gh auth login`; then run
       `scripts/github_backlog.sh`)
 
+## PincOpen gripper (follower ID 6 — replaced stock gripper 2026-07-26)
+- [x] Bring-up + range mapping + cycle test via direct serial (`robot_manipulator/gripper.py`;
+      OPEN=2005, CLOSED=3200 steps; not back-drivable) — 2026-07-26
+- [x] LeRobot follower calibration patched with measured gripper range — 2026-07-26
+- [ ] Teleop grip test (leader arm) recorded on workspace camera
+- [ ] **Autocalibration feature**: generalize the gripper's powered range-finding
+      (torque-limited creep + load/current stall detection → write LeRobot calibration JSON)
+      to all joints; replaces manual `lerobot-calibrate` sweeps — required for
+      non-back-drivable joints like the PincOpen, convenient everywhere else
+- [ ] Evaluate FACTR2 (https://jasonjzliu.com/factr2/) — force estimation from motor
+      currents (NEXT) + force-informed BC resampling (FIRST); no force sensors needed,
+      Feetech `Present_current`/`Present_load` is the same signal we already use for
+      contact detection. Code not yet released ("coming soon") — watch the repo
+- [ ] Upstream PR to CNURobotics/pinc_open_driver: mock.launch.py namespace + duplicate
+      spawner fixes (patched locally in ~/ros2_ws/src/pinc_open_driver)
+
 ## Long-term
 - [ ] Migrate to OOP SkillBase architecture
 - [ ] Explore IL/RL policies with "synthetic depth"
