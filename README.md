@@ -22,7 +22,12 @@ Testing various control methods on the **SO101 12V** robot arm — from basic ca
 - [x] **Bridge launcher created** — `launch_bridge.py` with WebSocket transport on port 8765
 - [x] **MiniLab Phase 0 harness (software)** — 2026-07-04: `core/` (policy interface, arbiter, safety, episode log), `io/` (MIDI event log + state vector, audio), `exec/` (sync_replan / temporal_ensemble / async_client / rtc executors), `eval/` (MIDI scorer, task suite v0); 33 new unit tests green (`uv run pytest`), MiniLab 3 verified live over `mido`/rtmidi (`uv run pytest -m hw`)
 
+- [x] **Harness + MuJoCo sim, software (branch `harness-sim2real`)** — `harness/` (units, backends, safety filter, skill runner, trajectory log, ONNX policy, `harness reach` CLI), `sim/` (vendored SO101 MJCF, FK/Jacobian, `SO101Reach-v0` with domain randomization, PPO training, ONNX export), `sim/gap/` (motion scripts, replay, compare, actuator fit). Work order and evidence: `docs/HARNESS-SIM2REAL-PLAN.md`, `docs/harness-sim2real.md`
+- [ ] **Sim reach policy** — best policy reaches 82 % (DR, 100 episodes) against the 90 % target; harness acceptance (≥ 85 %) passes at 89–90 %. Details and the `ACTION_SCALE` decision: `docs/harness-sim2real.md`
+
 ### Next Up
+
+- [ ] **Hardware tickets H1–H4** (user, on the bench) — PincOpen payload, joint map calibration (`config/sim2real.yaml`), gap capture + fit, real reach at `--max-vel 0.5`
 
 - [ ] **Test bridge end-to-end** — launch bridge, send `arm.get_state` / `arm.home` via WebSocket
 - [ ] **Camera integration** — subscribe to ROS2 image topics, test `arm.camera` command
