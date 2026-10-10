@@ -12,8 +12,9 @@ is injected, which is how the tests exercise it.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -21,6 +22,9 @@ from robot_manipulator.core.policy_iface import Obs
 from robot_manipulator.exec.scheduler import WallClock
 from robot_manipulator.harness.clock import Clock
 from robot_manipulator.harness.units import CMD_JOINTS, JointMap
+
+if TYPE_CHECKING:
+    from robot_manipulator.sim.randomize import DRConfig
 
 log = logging.getLogger(__name__)
 N = len(CMD_JOINTS)
@@ -97,10 +101,13 @@ class SimBackend:
         hz: float = 50.0,
         viewer: bool = False,
         randomizer: Callable[[Any], None] | None = None,
+        dr: DRConfig | None = None,
+        seed: int = 0,
     ) -> None:
         import mujoco
 
         from robot_manipulator.sim import model as sim_model
+        from robot_manipulator.sim.randomize import DRConfig, NominalParams
 
         self._mj = mujoco
         self._sm = sim_model
@@ -109,10 +116,17 @@ class SimBackend:
         self.hz = hz
         self.n_substeps = max(1, round(1.0 / (hz * self.model.opt.timestep)))
         self.randomizer = randomizer
+        self.dr = dr if dr is not None else DRConfig(enabled=False)
+        self.rng = np.random.default_rng(seed)
+        self._nominal = NominalParams.snapshot(self.model)
+        self._gripper_body = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "gripper")
         self._qpos = sim_model.joint_qpos_adr(self.model)
         self._dof = sim_model.joint_dof_adr(self.model)
         self._act = sim_model.actuator_ids(self.model)
         self._site = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, sim_model.EE_SITE)
+        self._delay = 0
+        self._bias = np.zeros(N - 1)
+        self._pending: deque[np.ndarray] = deque()
         self._viewer = None
         if viewer:
             import mujoco.viewer
@@ -121,24 +135,59 @@ class SimBackend:
         self.reset()
 
     def reset(self, q0: np.ndarray | None = None) -> None:
-        """Reset state to q0 (default zeros), hold it there, and re-apply the randomizer."""
+        """Reset to q0 (default zeros) and hold it there. Re-draw DR when it is enabled.
+
+        The DR draws, action delay, and sensor bias match the training env (`sim/envs/reach.py`).
+        """
+        from robot_manipulator.sim.randomize import apply_dr
+
         if self.randomizer is not None:
             self.randomizer(self.model)
+        apply_dr(self.model, self._nominal, self.dr, self.rng, self._gripper_body)
+        if self.dr.enabled:
+            self._delay = int(self.rng.choice(self.dr.action_delay_steps))
+            self._bias = self.rng.uniform(-self.dr.joint_bias, self.dr.joint_bias, N - 1)
+        else:
+            self._delay = 0
+            self._bias = np.zeros(N - 1)
+        self._mj.mj_setConst(self.model, self.data)
         self._mj.mj_resetData(self.model, self.data)
         q = np.zeros(N) if q0 is None else _check_q(q0)
         self.data.qpos[self._qpos] = q
         self.data.ctrl[self._act] = q
         self._mj.mj_forward(self.model, self.data)
+        # the command pipeline starts holding q, like a policy that has not moved yet
+        self._pending = deque(q.copy() for _ in range(self._delay))
 
     def read(self) -> Obs:
+        """Measured state: with DR on, q has a per-episode bias and noise, and dq has noise.
+
+        `q_true`/`dq_true` are the simulator's state. `ee_true` is the end-effector position used
+        to score success, matching the training env's `info["success"]`.
+        """
+        q_true = self.data.qpos[self._qpos].copy()
+        dq_true = self.data.qvel[self._dof].copy()
+        q, dq = q_true.copy(), dq_true.copy()
+        if self.dr.enabled:
+            q[: N - 1] += self._bias + self.rng.normal(0.0, self.dr.obs_noise_q, N - 1)
+            dq[: N - 1] += self.rng.normal(0.0, self.dr.obs_noise_dq, N - 1)
         return {
             "t": float(self.data.time),
-            "q": self.data.qpos[self._qpos].copy(),
-            "dq": self.data.qvel[self._dof].copy(),
+            "q": q,
+            "dq": dq,
+            "q_true": q_true,
+            "dq_true": dq_true,
+            "ee_true": self.ee_pos(),
         }
 
     def command(self, q_target: np.ndarray) -> None:
+        """Send the joint command. With an action delay of d, the command reaches the servos d ticks
+        later. Delaying the commanded position matches delaying the policy action, since the
+        policy integrates its own command."""
         q = _check_q(q_target)
+        if self._delay > 0:
+            self._pending.append(q)
+            q = self._pending.popleft()
         self.data.ctrl[self._act] = q
         for _ in range(self.n_substeps):
             self._mj.mj_step(self.model, self.data)

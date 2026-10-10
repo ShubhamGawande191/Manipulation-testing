@@ -93,7 +93,7 @@ def _attempt(
                         "dq": obs.get("dq", np.zeros(N)),
                         "q_target": target,
                         "q_safe": q_safe,
-                        "ee": obs.get("ee"),
+                        "ee": obs.get("ee", obs.get("ee_true")),
                         "extra": {"chunk_idx": idx, "chunk_len": len(chunk)},
                     }
                 )

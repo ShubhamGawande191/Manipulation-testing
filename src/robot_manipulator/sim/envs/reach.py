@@ -13,7 +13,6 @@ The gripper is held at `GRIPPER_HOLD`.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
 from typing import Any
 
 import gymnasium as gym
@@ -30,6 +29,25 @@ from robot_manipulator.sim.model import (
     joint_ranges,
     load_model,
 )
+from robot_manipulator.sim.randomize import DRConfig, NominalParams, apply_dr
+
+__all__ = [
+    "ACTION_SCALE",
+    "DRConfig",
+    "EP_STEPS",
+    "GRIPPER_HOLD",
+    "HOME_ARM",
+    "HZ",
+    "JOINT_MARGIN",
+    "N_ARM",
+    "OBS_DIM",
+    "ReachEnv",
+    "SUCCESS_TOL",
+    "build_obs",
+    "command_box",
+    "integrate_command",
+    "target_box",
+]
 
 HZ = 50.0
 EP_SECONDS = 4.0
@@ -74,40 +92,20 @@ def command_box(lo, hi, margin: float = JOINT_MARGIN) -> tuple[np.ndarray, np.nd
     return lo_v + margin, hi_v - margin
 
 
+def target_box(lo, hi, shrink: float = TARGET_SHRINK) -> tuple[np.ndarray, np.ndarray]:
+    """Box that reach targets are sampled from: each arm range shrunk about its midpoint."""
+    lo_v = _vec(np.asarray(lo, dtype=np.float64)[:N_ARM], N_ARM, "lo")
+    hi_v = _vec(np.asarray(hi, dtype=np.float64)[:N_ARM], N_ARM, "hi")
+    mid = 0.5 * (lo_v + hi_v)
+    half = 0.5 * (hi_v - lo_v) * shrink
+    return mid - half, mid + half
+
+
 def integrate_command(q_cmd, action, box) -> np.ndarray:
     """q_cmd' = clip(q_cmd + ACTION_SCALE * clip(a, -1, 1), lo, hi). Shared by env and deploy."""
     lo, hi = box
     a = np.clip(_vec(action, N_ARM, "action"), -1.0, 1.0)
     return np.clip(_vec(q_cmd, N_ARM, "q_cmd") + ACTION_SCALE * a, lo, hi)
-
-
-@dataclass
-class DRConfig:
-    """Domain randomization ranges. Applied fresh on every reset from nominal values."""
-
-    enabled: bool = True
-    kp_kv: tuple[float, float] = (0.8, 1.2)  # one factor per joint, applied to kp and kv together
-    damping: tuple[float, float] = (0.7, 1.3)
-    frictionloss: tuple[float, float] = (0.5, 2.0)
-    armature: tuple[float, float] = (0.8, 1.2)
-    link_mass: tuple[float, float] = (0.9, 1.1)  # per body, mass and inertia together
-    gripper_payload_kg: tuple[float, float] = (0.0, 0.25)  # extra mass on body `gripper` (H1)
-    action_delay_steps: tuple[int, ...] = (0, 1, 2)
-    obs_noise_q: float = 0.005  # rad
-    obs_noise_dq: float = 0.05  # rad/s
-    joint_bias: float = 0.02  # rad, per-episode offset on measured q
-
-
-@dataclass
-class _Nominal:
-    gainprm: np.ndarray
-    biasprm: np.ndarray
-    damping: np.ndarray
-    frictionloss: np.ndarray
-    armature: np.ndarray
-    body_mass: np.ndarray
-    body_inertia: np.ndarray
-    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class ReachEnv(gym.Env):
@@ -128,11 +126,9 @@ class ReachEnv(gym.Env):
         lo, hi = joint_ranges(self.model, JOINTS)
         self.joint_lo, self.joint_hi = lo[:N_ARM], hi[:N_ARM]
         self.box = command_box(lo, hi)
-        mid = 0.5 * (self.joint_lo + self.joint_hi)
-        half = 0.5 * (self.joint_hi - self.joint_lo) * TARGET_SHRINK
-        self.target_lo, self.target_hi = mid - half, mid + half
+        self.target_lo, self.target_hi = target_box(lo, hi)
         self.n_substeps = max(1, round(1.0 / (HZ * self.model.opt.timestep)))
-        self._nominal = self._snapshot()
+        self._nominal = NominalParams.snapshot(self.model)
 
         self.observation_space = spaces.Box(-10.0, 10.0, (OBS_DIM,), np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, (N_ARM,), np.float32)
@@ -144,44 +140,6 @@ class ReachEnv(gym.Env):
         self._delay = 0
         self._bias = np.zeros(N_ARM)
         self._step = 0
-
-    # ---- nominal parameters and domain randomization -------------------------------
-
-    def _snapshot(self) -> _Nominal:
-        m = self.model
-        return _Nominal(
-            gainprm=m.actuator_gainprm.copy(),
-            biasprm=m.actuator_biasprm.copy(),
-            damping=m.dof_damping.copy(),
-            frictionloss=m.dof_frictionloss.copy(),
-            armature=m.dof_armature.copy(),
-            body_mass=m.body_mass.copy(),
-            body_inertia=m.body_inertia.copy(),
-        )
-
-    def _restore_nominal(self) -> None:
-        m, nom = self.model, self._nominal
-        m.actuator_gainprm[:] = nom.gainprm
-        m.actuator_biasprm[:] = nom.biasprm
-        m.dof_damping[:] = nom.damping
-        m.dof_frictionloss[:] = nom.frictionloss
-        m.dof_armature[:] = nom.armature
-        m.body_mass[:] = nom.body_mass
-        m.body_inertia[:] = nom.body_inertia
-
-    def _apply_dr(self, rng: np.random.Generator) -> None:
-        dr, m, nom = self.dr, self.model, self._nominal
-        s = rng.uniform(*dr.kp_kv, size=m.nu)
-        m.actuator_gainprm[:, 0] = nom.gainprm[:, 0] * s
-        m.actuator_biasprm[:, 1:3] = nom.biasprm[:, 1:3] * s[:, None]
-        m.dof_damping[:] = nom.damping * rng.uniform(*dr.damping, size=m.nv)
-        m.dof_frictionloss[:] = nom.frictionloss * rng.uniform(*dr.frictionloss, size=m.nv)
-        m.dof_armature[:] = nom.armature * rng.uniform(*dr.armature, size=m.nv)
-        f = rng.uniform(*dr.link_mass, size=m.nbody)
-        f[0] = 1.0  # world body
-        m.body_mass[:] = nom.body_mass * f
-        m.body_inertia[:] = nom.body_inertia * f[:, None]
-        m.body_mass[self._gripper_body] += rng.uniform(*dr.gripper_payload_kg)
 
     # ---- observation -----------------------------------------------------------------
 
@@ -201,9 +159,8 @@ class ReachEnv(gym.Env):
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
         rng = self.np_random
-        self._restore_nominal()
+        apply_dr(self.model, self._nominal, self.dr, rng, self._gripper_body)
         if self.dr.enabled:
-            self._apply_dr(rng)
             self._delay = int(rng.choice(self.dr.action_delay_steps))
             self._bias = rng.uniform(-self.dr.joint_bias, self.dr.joint_bias, N_ARM)
         else:
@@ -211,7 +168,7 @@ class ReachEnv(gym.Env):
             self._bias = np.zeros(N_ARM)
         mujoco.mj_setConst(self.model, self.data)
 
-        q_target, ee_target = self.fk.sample_reachable(rng, 1, self.target_lo, self.target_hi)
+        _, ee_target = self.fk.sample_reachable(rng, 1, self.target_lo, self.target_hi)
         self.target = ee_target[0].copy()
 
         q0 = np.clip(

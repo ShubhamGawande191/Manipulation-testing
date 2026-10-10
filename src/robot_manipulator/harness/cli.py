@@ -1,0 +1,261 @@
+"""Deployment harness CLI.
+
+    harness reach --backend sim --policy runs/ppo_reach/<run>/reach.onnx --random 100 --dr
+
+Each episode is `home` (scripted, velocity-capped glide to HOME) followed by `reach` (the ONNX
+policy until the end effector is within 2 cm of the target or 4 s pass). Both run through the
+same runner, safety filter, and trajectory log as the real arm. Success is scored on the
+simulator's true end-effector position, matching the training env.
+
+`--backend real` drives the LeRobot follower. It is refused unless `config/sim2real.yaml` has
+`calibrated: true` and `--live` is given. Without `--live` it is a dry run, which only reads
+the arm and records the commands it would send.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import typer
+
+app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
+
+HOME_TOL = 0.05  # rad, per joint; measured q carries sensor bias under DR
+GLIDE_TIMEOUT_S = 5.0
+BACKENDS = ("sim", "fake", "real")
+
+
+def run_reach(
+    *,
+    backend: str,
+    policy_path: Path,
+    targets: np.ndarray | None = None,
+    n_episodes: int = 1,
+    seed: int = 0,
+    dr: bool = False,
+    viewer: bool = False,
+    live: bool = False,
+    max_vel: float = 1.0,
+    port: str = "/dev/so101_follower",
+    joint_map_path: Path = Path("config/sim2real.yaml"),
+    out: Path | None = None,
+) -> dict[str, Any]:
+    """Run `n_episodes` home+reach episodes and write episodes.parquet, summary.json and traj/."""
+    from robot_manipulator.core.episode_log import EpisodeRecord, write_records
+    from robot_manipulator.exec.scheduler import SimClock, WallClock
+    from robot_manipulator.harness.backend import FakeBackend, LeRobotBackend, SimBackend
+    from robot_manipulator.harness.policies.glide import GlideTo
+    from robot_manipulator.harness.policies.onnx_reach import OnnxReachPolicy
+    from robot_manipulator.harness.runner import run_sequence
+    from robot_manipulator.harness.safety_layer import SafetyFilter
+    from robot_manipulator.harness.skill import EEReached, JointReached, Skill, TimeLimit
+    from robot_manipulator.harness.trajlog import TrajectoryLog
+    from robot_manipulator.harness.units import JointMap
+    from robot_manipulator.sim.envs.reach import (
+        EP_SECONDS,
+        GRIPPER_HOLD,
+        HOME_ARM,
+        HZ,
+        N_ARM,
+        RESET_NOISE,
+        SUCCESS_TOL,
+        target_box,
+    )
+    from robot_manipulator.sim.kinematics import FK
+    from robot_manipulator.sim.model import joint_ranges, load_model
+    from robot_manipulator.sim.randomize import DRConfig
+
+    if backend not in BACKENDS:
+        raise ValueError(f"backend must be one of {BACKENDS}")
+    if backend == "fake" and dr:
+        typer.echo("note: --dr has no effect on the fake backend", err=True)
+
+    model = load_model()
+    fk = FK(model)
+    lo6, hi6 = joint_ranges(model)
+    home6 = np.r_[HOME_ARM, GRIPPER_HOLD]
+    rng = np.random.default_rng(seed)
+    if targets is None:
+        _, targets = fk.sample_reachable(rng, n_episodes, *target_box(lo6, hi6))
+    targets = np.asarray(targets, dtype=np.float64).reshape(-1, 3)
+
+    run_dir = (
+        out
+        if out is not None
+        else Path("runs") / "harness" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    traj = TrajectoryLog(run_dir / "traj")
+    policy = OnnxReachPolicy(policy_path)
+
+    sim_be = None
+    real_be = None
+    if backend == "sim":
+        sim_be = SimBackend(hz=HZ, viewer=viewer, dr=DRConfig(enabled=dr), seed=seed)
+    elif backend == "real":
+        joint_map = JointMap.from_yaml(joint_map_path)
+        real_be = LeRobotBackend(port, joint_map, dry_run=not live)
+
+    def ee_of(obs: dict) -> np.ndarray:
+        if "ee_true" in obs:
+            return np.asarray(obs["ee_true"])
+        return fk.ee_pos(np.r_[np.asarray(obs["q"])[:N_ARM], GRIPPER_HOLD])
+
+    episodes: list[dict[str, Any]] = []
+    records: list[EpisodeRecord] = []
+    arm_id = {"sim": "sim_so101", "fake": "fake_so101", "real": "so101_follower"}[backend]
+    run_id = run_dir.name
+    for i, target in enumerate(targets):
+        clock = WallClock() if backend == "real" else SimClock()
+        if sim_be is not None:
+            start = np.clip(
+                home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
+            )
+            sim_be.reset(start)
+            be: Any = sim_be
+        elif backend == "fake":
+            start = np.clip(
+                home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
+            )
+            be = FakeBackend(q0=start, alpha=0.3, clock=clock)
+        else:
+            be = real_be
+
+        safety = SafetyFilter(lo=lo6, hi=hi6, max_vel=max_vel, clock=clock)
+        home = Skill(
+            "home",
+            GlideTo(home6, max_vel=max_vel, hz=HZ),
+            [JointReached(home6, tol=HOME_TOL), TimeLimit(GLIDE_TIMEOUT_S)],
+            hz=HZ,
+        )
+        reach = Skill(
+            "reach",
+            policy,
+            [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
+            hz=HZ,
+        )
+        t_ep = time.monotonic()
+        results = run_sequence(
+            [(home, {}), (reach, {"target": target})], be, safety, clock=clock, log=traj
+        )
+        wall = time.monotonic() - t_ep
+        reach_res = results[-1] if len(results) == 2 else None
+        success = bool(reach_res and reach_res.status == "success")
+        n_steps = reach_res.n_steps if reach_res else 0
+        final = be.read()
+        final_dist = float(np.linalg.norm(ee_of(final) - target))
+        if backend == "real" and not live:
+            typer.echo(f"dry run, episode {i}: last command {real_be.last_command}", err=True)
+
+        episodes.append(
+            {
+                "episode": i,
+                "target_m": target.tolist(),
+                "success": success,
+                "home_ok": results[0].status == "success",
+                "n_steps": n_steps,
+                "final_dist_m": final_dist,
+                "time_to_success_s": reach_res.duration_s if success else None,
+                "reason": reach_res.reason if reach_res else "home_failed",
+            }
+        )
+        records.append(
+            EpisodeRecord(
+                run_id=f"{run_id}-{i:03d}",
+                arm_id=arm_id,
+                policy=policy.name,
+                executor="harness",
+                chunk_len=1,
+                precision="fp32",
+                policy_latency_ms=float(policy.health().latency_ms),
+                e2e_latency_ms=1000.0 * wall / max(n_steps, 1),
+                jitter_ms=0.0,
+                success=success,
+                time_to_success_s=reach_res.duration_s if success else None,
+                task="reach",
+                backend=backend,
+                n_steps=n_steps,
+            )
+        )
+        if sim_be is None and backend != "real":
+            be.close()
+
+    if real_be is not None:
+        real_be.close()
+    if sim_be is not None:
+        sim_be.close()
+
+    write_records(records, run_dir / "episodes.parquet")
+    succ = [e for e in episodes if e["success"]]
+    summary = {
+        "backend": backend,
+        "dr": bool(dr) if backend == "sim" else None,
+        "live": bool(live) if backend == "real" else None,
+        "policy": str(policy_path),
+        "n_episodes": len(episodes),
+        "success_rate": len(succ) / len(episodes) if episodes else 0.0,
+        "mean_final_dist_m": float(np.mean([e["final_dist_m"] for e in episodes])),
+        "mean_time_to_success_s": (
+            float(np.mean([e["time_to_success_s"] for e in succ])) if succ else None
+        ),
+        "out": str(run_dir),
+        "episodes": episodes,
+    }
+    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return summary
+
+
+@app.callback()
+def _root() -> None:
+    """Deployment harness. Subcommands: `reach`."""
+
+
+@app.command("reach")
+def reach_cmd(
+    backend: str = typer.Option("sim", help="sim | fake | real"),
+    policy: Path = typer.Option(..., exists=True, help="reach.onnx; policy_meta.json beside it"),
+    target: str | None = typer.Option(None, help="x,y,z in meters, one episode"),
+    random: int = typer.Option(0, "--random", help="N random reachable targets (sim or fake)"),
+    seed: int = typer.Option(0),
+    dr: bool = typer.Option(False, "--dr/--no-dr", help="sim: training-style domain randomization"),
+    viewer: bool = typer.Option(False, help="sim: open the MuJoCo passive viewer"),
+    live: bool = typer.Option(False, "--live/--dry-run", help="real: send commands to the arm"),
+    max_vel: float = typer.Option(1.0, help="rad/s cap per joint"),
+    port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
+    joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
+    out: Path | None = typer.Option(None, help="output dir (default runs/harness/<ts>)"),
+) -> None:
+    targets = None
+    n_episodes = 1
+    if target is not None:
+        parts = [float(x) for x in target.split(",")]
+        if len(parts) != 3:
+            raise typer.BadParameter("--target needs x,y,z")
+        targets = np.array([parts])
+    elif random > 0:
+        n_episodes = random
+    summary = run_reach(
+        backend=backend,
+        policy_path=policy,
+        targets=targets,
+        n_episodes=n_episodes,
+        seed=seed,
+        dr=dr,
+        viewer=viewer,
+        live=live,
+        max_vel=max_vel,
+        port=port,
+        joint_map_path=joint_map,
+        out=out,
+    )
+    brief = {k: v for k, v in summary.items() if k != "episodes"}
+    typer.echo(json.dumps(brief, indent=2))
+
+
+if __name__ == "__main__":
+    app()
