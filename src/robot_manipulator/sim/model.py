@@ -23,6 +23,7 @@ JOINTS: tuple[str, ...] = (
 )
 ARM_JOINTS: tuple[str, ...] = JOINTS[:5]
 EE_SITE = "gripperframe"
+MENAGERIE_COMMIT = "3abca2e302625cec9429c49806121ea2855cef81"  # the vendored MJCF's upstream commit
 
 ASSET_DIR = Path(str(resources.files(__package__).joinpath("assets", "so101")))
 

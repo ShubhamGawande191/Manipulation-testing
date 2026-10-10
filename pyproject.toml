@@ -56,6 +56,7 @@ bench-check = "robot_manipulator.scripts.bench_check:app"
 calibrate = "robot_manipulator.scripts.calibrate:app"
 teleoperate = "robot_manipulator.scripts.teleoperate:app"
 pick-and-place = "robot_manipulator.scripts.pick_and_place:app"
+sim-train-reach = "robot_manipulator.sim.train_reach:app"
 
 [build-system]
 requires = ["hatchling"]
