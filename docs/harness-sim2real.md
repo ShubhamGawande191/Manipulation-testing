@@ -9,10 +9,8 @@ Software only — no hardware was connected or torqued (plan hard rule 1). Hardw
   (`scripts/launch_bridge.py`, `scripts/teleoperate.py`, `tasks/calculate_world_coords.py`,
   `tasks/calibrate_follower.py`, `tasks/calibrate_intrinsics.py`). They were left alone. The gate used for every ticket is
   **zero new ruff findings**, with the total held at 13.
-- **`openclaw` pin (T0).** PyPI now lists only `openclaw` 2.0.1 and 2.0.2 (no 2026.x), so any fresh `uv lock` fails,
-  even on the original `pyproject.toml`. `pyproject.toml` pins the exact wheel the previous lock used through
-  `[tool.uv.sources]`. The sha256 (`16b84601…60dfb`) matches the old lock. Revert this pin once you decide what
-  `openclaw` should be (it is imported only by `scripts/pick_and_place.py`).
+- **`openclaw` removed (T13).** The T0 wheel pin is gone together with the dependency, `scripts/pick_and_place.py`,
+  `skills/so101.md` and the CMDOP agent on the machine (security cleanup, 2026-10-10).
 - **Install command.** Use `uv sync --extra sim --extra dev --extra midi --extra audio`. Leaving out `midi`/`audio` uninstalls
   `python-rtmidi` and `sounddevice`.
 
@@ -63,6 +61,15 @@ Plan settings (`n_steps` 256, `batch_size` 4096, 12 envs, DR on, seed 0), 3 M st
 **Likely cause of the early plateau (hypothesis):** `n_steps 256 × 12 envs = 3 072` samples per update, which is smaller than `batch_size 4096`. Each PPO epoch is therefore one full-batch gradient step, about 10 per update and roughly 10 k in total over 3 M steps. Standard PPO runs use minibatches of 64–512 and far more gradient steps. The plan's hyperparameters were kept for attempts 1–3. The diagnostic row is a separate experiment and does not replace them.
 
 **Effect on the rest of the plan:** T10's acceptance (≥ 85 % in the harness) needs a policy that meets the bar. T9 (ONNX policy and parity) and T11 (gap toolkit) do not depend on policy quality and are complete. The harness CLI runs on any artifact, so the T10 code is done. Only its acceptance number is blocked.
+
+**Fix 1 (Opus, 2026-10-10), in progress.** Root cause of the stall was the plan's PPO config: `batch_size`
+4 096 > rollout 3 072, so each epoch was one full-batch step. New defaults in `sim/train_reach.py`: `n_steps` 1 024
+(12 288 per rollout), `batch_size` 2 048, `n_epochs` 10 (60 gradient steps per update), linear LR decay from 3e-4,
+`target_kl` 0.02. The reward gains a fine-reach term `1 - tanh(dist / 0.05)`. `ACTION_SCALE` is back to 0.02
+(1 rad/s max, safer for the first real runs). The run `runs/ppo_reach/fix1_3M` was stopped at about 0.45 M steps
+because of a reboot. Eval so far: 0 % / 0.206 m at 0.1 M, 0.153 m at 0.2 M, 0.128 m at 0.3 M, **12 % / 0.090 m at
+0.4 M** (attempt 1 was at 0 % at 1 M). Next: rerun the full 3 M:
+`uv run sim-train-reach --total-steps 3000000 --n-envs 12 --seed 0 --dr --out runs/ppo_reach/fix1_3M`.
 
 ### B2 — T10 acceptance: met (≥ 85 %), with two caveats
 

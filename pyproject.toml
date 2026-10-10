@@ -7,8 +7,6 @@ dependencies = [
     # Robot arm control — Feetech servo support for SO101 leader/follower arms
     # OpenCV is bundled as a transitive dependency; do NOT add opencv-python here.
     "lerobot[feetech]>=0.5.0",
-    # AI agent orchestration for zero-code task pipelines (https://cmdop.com)
-    "openclaw>=2026.3.12",
     # Numerics / data
     "numpy>=2.0",
     "scipy>=1.14",
@@ -55,7 +53,6 @@ dev = [
 bench-check = "robot_manipulator.scripts.bench_check:app"
 calibrate = "robot_manipulator.scripts.calibrate:app"
 teleoperate = "robot_manipulator.scripts.teleoperate:app"
-pick-and-place = "robot_manipulator.scripts.pick_and_place:app"
 sim-train-reach = "robot_manipulator.sim.train_reach:app"
 harness = "robot_manipulator.harness.cli:app"
 
@@ -65,11 +62,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/robot_manipulator"]
-
-[tool.uv.sources]
-# PyPI no longer lists openclaw 2026.x (only 2.0.x), so every fresh `uv lock` fails.
-# Pin the exact wheel the previous uv.lock was built from (sha256 16b84601…dfb, same as lock).
-openclaw = { url = "https://files.pythonhosted.org/packages/f3/b5/508e36856bf3a741f772b5e38d6c32b3fa977e50752168cba463250dc734/openclaw-2026.3.20-py3-none-any.whl" }
 
 [tool.ruff]
 line-length = 100

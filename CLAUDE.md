@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A lab for testing control methods on the **SO101 12V** 6-DOF arm (Feetech STS3215 servos × 6, IDs 1–6). It spans three control layers that coexist in the repo: direct LeRobot servo control, a ROS2 + WebSocket bridge, and vision-guided pick-and-place tasks. The README's "Progress Tracker" is the source of truth for what currently works vs. abandoned (e.g. leader arm is uncalibrated — motor ID 2 has a broken cable; the OpenClaw/CMDOP agent route was abandoned in favor of ROS2).
+A lab for testing control methods on the **SO101 12V** 6-DOF arm (Feetech STS3215 servos × 6, IDs 1–6). It spans three control layers that coexist in the repo: direct LeRobot servo control, a ROS2 + WebSocket bridge, and vision-guided pick-and-place tasks. The README's "Progress Tracker" is the source of truth for what currently works vs. abandoned (e.g. the OpenClaw/CMDOP agent route was abandoned in favor of ROS2).
 
 ## Commands
 
@@ -17,14 +17,13 @@ uv run ruff format .                      # format
 
 uv run calibrate --follower-port /dev/so101_follower   # wraps lerobot-calibrate
 uv run teleoperate                        # wraps lerobot-teleoperate
-uv run pick-and-place                     # scripts/pick_and_place:app entry point
 ```
 
 ROS2 bridge requires Ubuntu 24.04 + ROS2 Jazzy and a separate `~/ros2_ws/` workspace (not in this repo — see README "Project Layout"). Launch sequence is three terminals: (1) `ros2 launch so101_bringup follower.launch.py`, (2) `uv run python -m robot_manipulator.scripts.launch_bridge`, (3) a WebSocket client. **Always `source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash` before ROS2 commands**, and `unset VIRTUAL_ENV` before `colcon build` (the uv venv leaks into the ROS2 build otherwise).
 
 ## Two control paths — do not confuse them
 
-**1. Direct LeRobot (`src/robot_manipulator/arm.py`):** `build_follower_config()` → `SOFollower` from LeRobot 0.5. Talks to the servos over USB serial directly. **Joint commands are in DEGREES** via `robot.send_action({"shoulder_pan.pos": ..., "gripper.pos": ...})`. `robot_id` must match the calibration file under `~/.cache/huggingface/lerobot/calibration/robots/so_follower/`. Pass `cameras=False` for fast joint-only ops. The `skills/so101.md` skill file documents this path for agent use (and notes the CMDOP shell is `sh`, so it invokes `.venv/bin/python` directly rather than activating the venv).
+**1. Direct LeRobot (`src/robot_manipulator/arm.py`):** `build_follower_config()` → `SOFollower` from LeRobot 0.5. Talks to the servos over USB serial directly. **Joint commands are in DEGREES** via `robot.send_action({"shoulder_pan.pos": ..., "gripper.pos": ...})`. `robot_id` must match the calibration file under `~/.cache/huggingface/lerobot/calibration/robots/so_follower/`. Pass `cameras=False` for fast joint-only ops.
 
 **2. ROS2 bridge (`src/robot_manipulator/so101_bridge.py`):** `SO101Plugin`/`SO101Controller` for agent-ros-bridge. Subscribes to `/follower/joint_states`, publishes to `/follower/forward_controller/commands`. Exposed over WebSocket (port 8765) as `arm.get_state`, `arm.home`, `arm.move_joints`, `arm.gripper`, `arm.stop`, `arm.camera`. **Joint commands here are in RADIANS.** `HOME = [0, -1.57, 1.57, 0, 0, -0.4]`.
 
@@ -71,4 +70,4 @@ The ~26 ad-hoc root experiment scripts (`test_*.py`, `patch*.py`, `req*.py`, `pr
 - Follower: `/dev/so101_follower` (udev symlink, serial 5AA9017934). Leader: `/dev/so101_leader` (serial 5AA9017169, currently broken).
 - Cameras (eMeet C950): workspace = OpenCV index 0, wrist = index 2 (odd `/dev/video*` nodes are metadata). Indices shift on reboot — verify with `uv run lerobot-find-cameras opencv`.
 - Serial permission errors: `sudo usermod -aG dialout $USER` then re-login.
-- `config/so101.yaml` holds ports/camera indices; secrets (OPENCLAW_API_KEY, HF_TOKEN) go in `.env`.
+- `config/so101.yaml` holds ports/camera indices; secrets (HF_TOKEN) go in `.env`. OpenClaw/CMDOP was removed 2026-10-10 (security; abandoned route) — don't reintroduce it.

@@ -1,1 +1,1 @@
-"""SO101 robot arm control with LeRobot and OpenClaw."""
+"""SO101 robot arm control with LeRobot."""

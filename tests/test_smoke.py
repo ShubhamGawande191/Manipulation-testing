@@ -12,6 +12,6 @@ def test_camera_module_importable():
 
 
 def test_scripts_importable():
-    for script in ("calibrate", "teleoperate", "pick_and_place"):
+    for script in ("calibrate", "teleoperate"):
         mod = importlib.import_module(f"robot_manipulator.scripts.{script}")
         assert hasattr(mod, "app")

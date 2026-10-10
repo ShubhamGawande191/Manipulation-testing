@@ -37,7 +37,7 @@ Testing various control methods on the **SO101 12V** robot arm — from basic ca
 ### Paused / Abandoned
 
 - ⏸️ **Leader arm calibration** — motor ID 2 has a loose cable, needs physical fix
-- ❌ **OpenClaw/CMDOP agent** — `terminal.execute()` timeouts, `ToolsUsed: 0` issue; abandoned in favor of ROS2 route
+- ❌ **OpenClaw/CMDOP agent** — abandoned in favor of ROS2 route; code, dependency and agent removed 2026-10-10 (security concerns)
 
 ---
 
@@ -193,7 +193,6 @@ src/robot_manipulator/
         calibrate.py        ← uv run calibrate
         teleoperate.py      ← uv run teleoperate
         launch_bridge.py    ← launch agent-ros-bridge with SO101 plugin
-        pick_and_place.py   ← pick-and-place task (to be updated for ROS2)
     tasks/                  ← future autonomous task modules
     utils/                  ← shared helpers
 tests/

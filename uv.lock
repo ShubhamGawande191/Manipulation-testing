@@ -550,17 +550,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cmdop"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "protobuf" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/00/3faa4fa2c3911eea746dec076f511fa902a256b559252f5291f19e59669a/cmdop-1.1.1-py3-none-any.whl", hash = "sha256:9ff2c72c78b611220a8d2a5b0521eda17f2fdff3801e1caef87f24000d0959dc", size = 25035569, upload-time = "2026-07-02T09:49:41.77Z" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2499,24 +2488,6 @@ wheels = [
 ]
 
 [[package]]
-name = "openclaw"
-version = "2026.3.20"
-source = { url = "https://files.pythonhosted.org/packages/f3/b5/508e36856bf3a741f772b5e38d6c32b3fa977e50752168cba463250dc734/openclaw-2026.3.20-py3-none-any.whl" }
-dependencies = [
-    { name = "cmdop" },
-    { name = "pydantic" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/b5/508e36856bf3a741f772b5e38d6c32b3fa977e50752168cba463250dc734/openclaw-2026.3.20-py3-none-any.whl", hash = "sha256:16b84601caa0ec0764ea39284a1c066e829a2fe7f2b8f9f706632ba908c60dfb" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cmdop" },
-    { name = "pydantic", specifier = ">=2.0" },
-]
-
-[[package]]
 name = "opencv-python-headless"
 version = "4.13.0.92"
 source = { registry = "https://pypi.org/simple" }
@@ -3682,7 +3653,6 @@ dependencies = [
     { name = "lerobot", extra = ["feetech"] },
     { name = "mido" },
     { name = "numpy" },
-    { name = "openclaw" },
     { name = "pupil-apriltags" },
     { name = "pyarrow" },
     { name = "pydantic" },
@@ -3730,7 +3700,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "onnx", marker = "extra == 'sim'", specifier = ">=1.16" },
     { name = "onnxruntime", marker = "extra == 'sim'", specifier = ">=1.18" },
-    { name = "openclaw", url = "https://files.pythonhosted.org/packages/f3/b5/508e36856bf3a741f772b5e38d6c32b3fa977e50752168cba463250dc734/openclaw-2026.3.20-py3-none-any.whl" },
     { name = "pupil-apriltags", specifier = ">=1.0.4" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "pydantic", specifier = ">=2.9" },
