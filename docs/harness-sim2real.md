@@ -25,11 +25,13 @@ Software only — no hardware was connected or torqued (plan hard rule 1). Hardw
 | T2 Units / joint map | done | 3b2cd02 | `harness/units.py` is the only LeRobot↔sim converter; config is uncalibrated placeholders (TODO-H2). Round-trips ±1e-9 for sign ±1 and offsets. Gripper clip and missing-key errors covered. pytest 63 passed (16 new). |
 | T3 Backends | done | c65f21d | Fake, Sim (MuJoCo, 4 substeps @ 50 Hz) and LeRobot backends. Sim tracks a constant target within 0.02 rad after 2 s. LeRobot runs only with an injected fake robot. `calibrated` guard blocks live use. pytest 74 passed (11 new). |
 | T4 Safety filter | done | 68a6013 | Clamp to limits ± margin, then velocity cap. Stale watchdog holds the previous command (matches Arbiter FROZEN). Limits default to MJCF ranges. pytest 84 passed (10 new). |
-| T5 Skill runtime | done | (this commit) | `Skill`/`SkillResult`, end conditions (TimeLimit, JointReached, EEReached, Stalled), `run_skill` with redo, `run_sequence` stops at first failure, `TrajectoryLog` → `traj_<skill>_<n>.parquet`. `EpisodeRecord` gains 4 defaulted fields. Tests at 8 Hz with SimClock. pytest 96 passed (12 new + episode log unchanged). |
+| T5 Skill runtime | done | e4a5a63 | `Skill`/`SkillResult`, end conditions (TimeLimit, JointReached, EEReached, Stalled), `run_skill` with redo, `run_sequence` stops at first failure, `TrajectoryLog` → `traj_<skill>_<n>.parquet`. `EpisodeRecord` gains 4 defaulted fields. Tests at 8 Hz with SimClock. pytest 96 passed (12 new + episode log unchanged). |
 
-Caveat for T5: `BasePolicy.act` computes staleness against `time.monotonic()`, but `SimBackend` reports
-simulated time in `obs["t"]`. Health readings are wrong for sim obs until the runner sets `t` from its own clock.
-Nothing gates on health yet, so this does not affect results so far.
+| T6 Kinematics helper | done | (this commit) | `sim/kinematics.FK`: ee_pos, 3×6 Jacobian (matches finite differences to 1e-5), `sample_reachable` (z ≥ z_min, in limits). `SimBackend.ee_pos` now recomputes kinematics. `site_xpos` otherwise lags qpos by one substep. FK equals SimBackend ee to 1e-12. pytest 102 passed (6 new). |
+
+Caveat for T5 (resolved in T5): `BasePolicy.act` computes staleness against `time.monotonic()`. `run_skill`
+now overwrites `obs["t"]` with the runner clock, so health is correct only with `WallClock`. With `SimClock`
+it still reads as stale. Nothing gates on health yet, so this does not affect results so far.
 
 ## Blockers
 

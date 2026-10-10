@@ -146,6 +146,8 @@ class SimBackend:
             self._viewer.sync()
 
     def ee_pos(self) -> np.ndarray:
+        # site_xpos lags qpos by one substep after mj_step, so recompute it from the current state
+        self._mj.mj_kinematics(self.model, self.data)
         return self.data.site_xpos[self._site].copy()
 
     def close(self) -> None:
