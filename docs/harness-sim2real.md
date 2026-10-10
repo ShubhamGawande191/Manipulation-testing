@@ -22,7 +22,12 @@ Software only — no hardware was connected or torqued (plan hard rule 1). Hardw
 |---|---|---|---|
 | T0 Branch, deps, ignores | done | cd4df6c | `import mujoco, stable_baselines3, onnxruntime` OK via `uv run`. pytest 42 passed. ruff: 0 new findings. |
 | T1 Vendor SO101 MJCF | done | 0069616 | Menagerie `robotstudio_so101` @ `3abca2e` (Apache-2.0), 22 files, 18 MB. Six actuators and joints in CMD order; limits match plan to 1e-4. pytest 47 passed (5 new). |
-| T2 Units / joint map | done | (this commit) | `harness/units.py` is the only LeRobot↔sim converter; config is uncalibrated placeholders (TODO-H2). Round-trips ±1e-9 for sign ±1 and offsets. Gripper clip and missing-key errors covered. pytest 63 passed (16 new). |
+| T2 Units / joint map | done | 3b2cd02 | `harness/units.py` is the only LeRobot↔sim converter; config is uncalibrated placeholders (TODO-H2). Round-trips ±1e-9 for sign ±1 and offsets. Gripper clip and missing-key errors covered. pytest 63 passed (16 new). |
+| T3 Backends | done | (this commit) | Fake, Sim (MuJoCo, 4 substeps @ 50 Hz) and LeRobot backends. Sim tracks a constant target within 0.02 rad after 2 s. LeRobot runs only with an injected fake robot. `calibrated` guard blocks live use. pytest 74 passed (11 new). |
+
+Caveat for T5: `BasePolicy.act` computes staleness against `time.monotonic()`, but `SimBackend` reports
+simulated time in `obs["t"]`. Health readings are wrong for sim obs until the runner sets `t` from its own clock.
+Nothing gates on health yet, so this does not affect results so far.
 
 ## Blockers
 
