@@ -1,0 +1,69 @@
+"""Vendored SO101 MJCF (Menagerie `robotstudio_so101`) and joint bookkeeping.
+
+The XML lives in `sim/assets/so101/` at a pinned upstream commit; see its
+`SOURCE.md`. `JOINTS` is the CMD order used everywhere in the harness
+(radians), matching the actuator order in the MJCF.
+"""
+
+from __future__ import annotations
+
+from importlib import resources
+from pathlib import Path
+
+import mujoco
+import numpy as np
+
+JOINTS: tuple[str, ...] = (
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper",
+)
+ARM_JOINTS: tuple[str, ...] = JOINTS[:5]
+EE_SITE = "gripperframe"
+
+ASSET_DIR = Path(str(resources.files(__package__).joinpath("assets", "so101")))
+
+
+def load_model(scene: str = "scene.xml") -> mujoco.MjModel:
+    """Load the SO101 model. `scene.xml` adds a floor; `so101.xml` is the bare arm."""
+    return mujoco.MjModel.from_xml_path(str(ASSET_DIR / scene))
+
+
+def _joint_id(model: mujoco.MjModel, name: str) -> int:
+    jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+    if jid < 0:
+        raise KeyError(f"joint {name!r} not in model")
+    return jid
+
+
+def joint_qpos_adr(model: mujoco.MjModel, joints: tuple[str, ...] = JOINTS) -> np.ndarray:
+    """qpos index of each named joint (all joints here are 1-DoF hinges)."""
+    return np.array([model.jnt_qposadr[_joint_id(model, j)] for j in joints], dtype=np.intp)
+
+
+def joint_dof_adr(model: mujoco.MjModel, joints: tuple[str, ...] = JOINTS) -> np.ndarray:
+    """qvel index of each named joint."""
+    return np.array([model.jnt_dofadr[_joint_id(model, j)] for j in joints], dtype=np.intp)
+
+
+def joint_ranges(
+    model: mujoco.MjModel, joints: tuple[str, ...] = JOINTS
+) -> tuple[np.ndarray, np.ndarray]:
+    """(lo, hi) joint limits in radians, in the given joint order."""
+    ids = [_joint_id(model, j) for j in joints]
+    rng = np.asarray(model.jnt_range[ids], dtype=np.float64)
+    return rng[:, 0].copy(), rng[:, 1].copy()
+
+
+def actuator_ids(model: mujoco.MjModel, joints: tuple[str, ...] = JOINTS) -> np.ndarray:
+    """ctrl index for each named actuator (actuators are named after their joint)."""
+    ids = []
+    for j in joints:
+        aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, j)
+        if aid < 0:
+            raise KeyError(f"actuator {j!r} not in model")
+        ids.append(aid)
+    return np.array(ids, dtype=np.intp)

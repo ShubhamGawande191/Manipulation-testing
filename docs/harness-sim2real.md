@@ -20,7 +20,8 @@ Software only — no hardware was connected or torqued (plan hard rule 1). Hardw
 
 | Ticket | Status | Commit | Result |
 |---|---|---|---|
-| T0 Branch, deps, ignores | done | (this commit) | `import mujoco, stable_baselines3, onnxruntime` OK via `uv run`. pytest 42 passed. ruff: 0 new findings. |
+| T0 Branch, deps, ignores | done | cd4df6c | `import mujoco, stable_baselines3, onnxruntime` OK via `uv run`. pytest 42 passed. ruff: 0 new findings. |
+| T1 Vendor SO101 MJCF | done | (this commit) | Menagerie `robotstudio_so101` @ `3abca2e` (Apache-2.0), 22 files, 18 MB. Six actuators and joints in CMD order; limits match plan to 1e-4. pytest 47 passed (5 new). |
 
 ## Blockers
 
