@@ -24,14 +24,24 @@ import typer
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
+def _linear(start: float):
+    """SB3 schedule: decays linearly from `start` to 0 over training."""
+    return lambda progress_remaining: progress_remaining * start
+
+
+# Rollout = n_steps * n_envs (12 288 at 12 envs) split into minibatches of 2 048 -> 60 gradient
+# steps per update. The original plan had batch_size (4 096) > rollout (3 072), i.e. a single
+# full-batch step per epoch, which stalled learning (docs/harness-sim2real.md B1).
 PPO_KWARGS: dict[str, Any] = dict(
-    n_steps=256,
-    batch_size=4096,
+    n_steps=1024,
+    batch_size=2048,
+    n_epochs=10,
     gamma=0.99,
     gae_lambda=0.95,
-    learning_rate=3e-4,
+    learning_rate=_linear(3e-4),
     ent_coef=0.0,
     clip_range=0.2,
+    target_kl=0.02,
     policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
 )
 
@@ -166,7 +176,11 @@ def train(
             "seed": seed,
             "wall_time_s": round(wall, 1),
             "best_train_eval_success": cb.best,
-            "ppo": {k: v for k, v in ppo_kwargs.items() if k != "policy_kwargs"},
+            "ppo": {
+                k: (f"linear({v(1.0)})" if callable(v) else v)
+                for k, v in ppo_kwargs.items()
+                if k != "policy_kwargs"
+            },
         },
     )
     summary = {
@@ -193,7 +207,7 @@ def main(
     final_episodes: int = typer.Option(100),
     dummy: bool = typer.Option(False, help="single-process vec env (smoke tests)"),
     batch_size: int = typer.Option(
-        PPO_KWARGS["batch_size"], help="PPO minibatch size (plan default 4096)"
+        PPO_KWARGS["batch_size"], help="PPO minibatch size"
     ),
 ) -> None:
     if out is None:

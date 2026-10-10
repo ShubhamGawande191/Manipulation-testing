@@ -52,13 +52,14 @@ __all__ = [
 HZ = 50.0
 EP_SECONDS = 4.0
 EP_STEPS = int(EP_SECONDS * HZ)  # 200
-ACTION_SCALE = 0.03  # rad per tick at a = 1. 0.02 (plan) reached 55 %; 0.03 reached 82 % (docs)
+ACTION_SCALE = 0.02  # rad per tick at a = 1 -> 1 rad/s max at 50 Hz (safe first real runs)
 JOINT_MARGIN = 0.05  # rad, same as the harness SafetyFilter default
 TARGET_SHRINK = 0.8  # targets are sampled from 80 % of each joint range
 HOME_ARM = np.array([0.0, -1.57, 1.57, 0.0, 0.0])  # matches so101_bridge.HOME, CMD order
 RESET_NOISE = 0.1  # rad, uniform per arm joint
 GRIPPER_HOLD = 1.74533  # rad, sim_open in config/sim2real.yaml
 SUCCESS_TOL = 0.02  # m
+FINE_STD = 0.05  # m, width of the tanh "fine reach" reward kernel
 N_ARM = 5
 OBS_DIM = 24
 ENV_ID = "SO101Reach-v0"
@@ -212,8 +213,11 @@ class ReachEnv(gym.Env):
         ee_meas = self.fk.ee_pos(self._full_q(q_meas))
         dist = float(np.linalg.norm(ee_true - self.target))
 
+        # Coarse -dist term plus a tanh kernel that keeps a strong gradient in the last few cm
+        # (Isaac Lab reach-style shaping); the plain -dist term is nearly flat at 2 cm.
         reward = (
             -dist
+            + (1.0 - float(np.tanh(dist / FINE_STD)))
             - 0.01 * float(np.sum((a - self._prev_a) ** 2))
             - 0.001 * float(np.sum(dq_true**2))
             + (0.5 if dist < SUCCESS_TOL else 0.0)
