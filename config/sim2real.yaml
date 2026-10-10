@@ -1,0 +1,25 @@
+# sim <-> LeRobot joint map. Read only by robot_manipulator.harness.units.
+#
+# Harness and sim use radians in CMD order. LeRobot's SO101 follower reports body
+# joints in degrees and the gripper in 0..100. Per joint:
+#     rad = sign * deg2rad(deg) + deg2rad(offset_deg)
+#
+# The values below are placeholders. Fill them in during hardware ticket H2 (see
+# docs/HARNESS-SIM2REAL-PLAN.md), then set calibrated: true. A real-robot run is refused
+# while calibrated is false.
+calibrated: false
+
+joints:
+  shoulder_pan: {sign: 1, offset_deg: 0.0}   # TODO-H2
+  shoulder_lift: {sign: 1, offset_deg: 0.0}  # TODO-H2
+  elbow_flex: {sign: 1, offset_deg: 0.0}     # TODO-H2
+  wrist_flex: {sign: 1, offset_deg: 0.0}     # TODO-H2
+  wrist_roll: {sign: 1, offset_deg: 0.0}     # TODO-H2
+
+# Linear map. LeRobot value lerobot_open maps to sim_open, and lerobot_closed maps to
+# sim_closed. Values outside the range are clipped.
+gripper:
+  lerobot_open: 0.0        # TODO-H2: confirm 0 is open on this servo calibration
+  lerobot_closed: 100.0
+  sim_open: 1.74533        # rad, MJCF gripper range upper bound
+  sim_closed: -0.17453     # rad, MJCF gripper range lower bound  (TODO-H2)
