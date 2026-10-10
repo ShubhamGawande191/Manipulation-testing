@@ -39,6 +39,11 @@ checkpoints/
 *.pt
 *.pth
 *.ckpt
+*.onnx
+
+# Local reference material (not redistributed; see docs/HARNESS-SIM2REAL-PLAN.md)
+third_party/
+assets/*.zip
 
 # OS
 .DS_Store
