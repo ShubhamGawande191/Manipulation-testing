@@ -27,7 +27,9 @@ Software only — no hardware was connected or torqued (plan hard rule 1). Hardw
 | T4 Safety filter | done | 68a6013 | Clamp to limits ± margin, then velocity cap. Stale watchdog holds the previous command (matches Arbiter FROZEN). Limits default to MJCF ranges. pytest 84 passed (10 new). |
 | T5 Skill runtime | done | e4a5a63 | `Skill`/`SkillResult`, end conditions (TimeLimit, JointReached, EEReached, Stalled), `run_skill` with redo, `run_sequence` stops at first failure, `TrajectoryLog` → `traj_<skill>_<n>.parquet`. `EpisodeRecord` gains 4 defaulted fields. Tests at 8 Hz with SimClock. pytest 96 passed (12 new + episode log unchanged). |
 
-| T6 Kinematics helper | done | (this commit) | `sim/kinematics.FK`: ee_pos, 3×6 Jacobian (matches finite differences to 1e-5), `sample_reachable` (z ≥ z_min, in limits). `SimBackend.ee_pos` now recomputes kinematics. `site_xpos` otherwise lags qpos by one substep. FK equals SimBackend ee to 1e-12. pytest 102 passed (6 new). |
+| T6 Kinematics helper | done | e7be2e2 | `sim/kinematics.FK`: ee_pos, 3×6 Jacobian (matches finite differences to 1e-5), `sample_reachable` (z ≥ z_min, in limits). `SimBackend.ee_pos` now recomputes kinematics. `site_xpos` otherwise lags qpos by one substep. FK equals SimBackend ee to 1e-12. pytest 102 passed (6 new). |
+
+| T7 Reach env | done | (this commit) | `SO101Reach-v0`: 24-d obs via `build_obs`, action → `integrate_command` (ACTION_SCALE 0.02, margin 0.05, gripper held at 1.74533). Targets from 80 % of limits. DR covers kp/kv, damping, friction, armature, link mass, gripper payload 0–0.25 kg, delay {0,1,2}, obs noise, per-episode bias. Nominal restored each reset (no drift). `check_env` passes. Acceptance: Jacobian-pinv policy with DR off reaches **18/20** (threshold 16). pytest 114 passed (12 new). |
 
 Caveat for T5 (resolved in T5): `BasePolicy.act` computes staleness against `time.monotonic()`. `run_skill`
 now overwrites `obs["t"]` with the runner clock, so health is correct only with `WallClock`. With `SimClock`
