@@ -12,6 +12,7 @@ from pathlib import Path
 
 import mujoco
 import numpy as np
+import yaml
 
 JOINTS: tuple[str, ...] = (
     "shoulder_pan",
@@ -68,3 +69,26 @@ def actuator_ids(model: mujoco.MjModel, joints: tuple[str, ...] = JOINTS) -> np.
             raise KeyError(f"actuator {j!r} not in model")
         ids.append(aid)
     return np.array(ids, dtype=np.intp)
+
+
+def apply_actuator_fit(model: mujoco.MjModel, fit: str | Path | dict) -> dict[str, int]:
+    """Scale a freshly loaded model by a fit from `sim.gap.fit` (config/actuator_fit.yaml).
+
+    Multiplies the current values, so call it on a model at its nominal values. Returns
+    {joint: delay_steps}. The delay is a command-pipeline property, so the caller applies it
+    to the backend, not to the model.
+    """
+    cfg = fit if isinstance(fit, dict) else yaml.safe_load(Path(fit).read_text())
+    act = actuator_ids(model, JOINTS)
+    dof = joint_dof_adr(model, JOINTS)
+    delays: dict[str, int] = {}
+    for joint, p in cfg["joints"].items():
+        j = JOINTS.index(joint)
+        a, d = act[j], dof[j]
+        model.actuator_gainprm[a, 0] *= float(p["kp_scale"])
+        model.actuator_biasprm[a, 1] *= float(p["kp_scale"])
+        model.dof_damping[d] *= float(p["damping_scale"])
+        model.dof_frictionloss[d] *= float(p["frictionloss_scale"])
+        model.dof_armature[d] *= float(p["armature_scale"])
+        delays[joint] = int(p["delay_steps"])
+    return delays
