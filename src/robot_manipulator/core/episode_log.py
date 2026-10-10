@@ -31,6 +31,11 @@ class EpisodeRecord:
     time_to_success_s: float | None = None
     task: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    # sim2real harness additions (defaults keep older records loadable)
+    backend: str = ""  # sim | fake | real
+    n_steps: int = 0  # control ticks in the episode
+    return_: float | None = None  # sum of reward, when the env provides one
+    reset_ok: bool | None = None  # real-rig auto-reset succeeded (Phase D)
 
 
 def write_records(records: list[EpisodeRecord], path: str | Path) -> Path:
