@@ -76,7 +76,7 @@ def test_meta_mismatch_is_refused(artifact, tmp_path):
     bad.mkdir()
     (bad / "reach.onnx").write_bytes((artifact / "reach.onnx").read_bytes())
     meta = json.loads((artifact / "policy_meta.json").read_text())
-    meta["action_scale"] = 0.03
+    meta["action_scale"] = 0.05  # any value other than the build's ACTION_SCALE
     (bad / "policy_meta.json").write_text(json.dumps(meta))
     with pytest.raises(ValueError, match="action_scale"):
         OnnxReachPolicy(bad / "reach.onnx")

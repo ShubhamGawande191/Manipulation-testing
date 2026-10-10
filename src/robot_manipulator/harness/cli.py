@@ -57,6 +57,7 @@ def run_reach(
     from robot_manipulator.harness.trajlog import TrajectoryLog
     from robot_manipulator.harness.units import JointMap
     from robot_manipulator.sim.envs.reach import (
+        ACTION_SCALE,
         EP_SECONDS,
         GRIPPER_HOLD,
         HOME_ARM,
@@ -110,6 +111,13 @@ def run_reach(
     records: list[EpisodeRecord] = []
     arm_id = {"sim": "sim_so101", "fake": "fake_so101", "real": "so101_follower"}[backend]
     run_id = run_dir.name
+    policy_step = ACTION_SCALE * HZ  # rad/s the policy can command at full action
+    if max_vel < policy_step:
+        typer.echo(
+            f"warning: --max-vel {max_vel} rad/s is below the policy's {policy_step:.2f} rad/s "
+            "step; commands are clipped to the cap (use --max-vel for the policy's scale)",
+            err=True,
+        )
     for i, target in enumerate(targets):
         clock = WallClock() if backend == "real" else SimClock()
         if sim_be is not None:

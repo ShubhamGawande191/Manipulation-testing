@@ -52,7 +52,7 @@ __all__ = [
 HZ = 50.0
 EP_SECONDS = 4.0
 EP_STEPS = int(EP_SECONDS * HZ)  # 200
-ACTION_SCALE = 0.02  # rad per tick at a = 1
+ACTION_SCALE = 0.03  # rad per tick at a = 1. 0.02 (plan) reached 55 %; 0.03 reached 82 % (docs)
 JOINT_MARGIN = 0.05  # rad, same as the harness SafetyFilter default
 TARGET_SHRINK = 0.8  # targets are sampled from 80 % of each joint range
 HOME_ARM = np.array([0.0, -1.57, 1.57, 0.0, 0.0])  # matches so101_bridge.HOME, CMD order

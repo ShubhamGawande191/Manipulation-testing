@@ -82,7 +82,7 @@ def test_cli_reach_prints_summary(artifact, tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
-    brief = json.loads(result.output)
+    brief = json.loads(result.stdout)
     assert brief["n_episodes"] == 1 and brief["backend"] == "fake"
 
 
