@@ -21,8 +21,13 @@ unchanged (`gripper` is the PincOpen servo/coupler joint).
   community MuJoCo PR pollen-robotics/PincOpen#6 (whose placeholder masses/inertias were NOT used).
 - Gripper joint range [-1.833, 0] rad: 0 = closed, 105° servo travel = the measured LeRobot calibration
   (steps 3200 closed → 2005 open).
-- Masses: total 0.247 kg past the wrist (user estimate 200-300 g incl. camera): interface 0.02, palm+motor
-  0.11, arms 2×0.008, fingers 2×0.010, camera+mount 0.08; inertias from box approximations.
-- **Guesses to measure:** interface thickness (12 mm), camera size/position (box on the back of the palm).
-  The camera placement was chosen because it reproduces the real wrist_flex stall (~59° observed, 59.5-62.5°
-  in sim at the same pose; other placements collide only at 80.5°), see `config/so101_limits.yaml`.
+- Masses: total 0.212 kg past the wrist (user estimate 200-300 g incl. camera): interface 0.015,
+  palm+motor 0.13, arms 2×0.008, fingers 2×0.010, camera bracket + board camera 0.03; inertias from boxes.
+- Interface ~5 mm (palm nearly flush with the wrist) and the camera L-bracket (foot on the palm face,
+  strut toward the wrist, horizontal plate, lens looking along the fingers, tilted ~30°) are estimated
+  from user photos 2026-10-17. **TODO-measure** both.
+- `scene_pinc.xml`: the floor is the table, 2.75 cm below the robot base plate (user estimate).
+- Known limitation: the Menagerie arm's collision geoms are coarse boxes; at the real folded rest pose
+  (shoulder_lift ≈ -108°, past the MJCF ±100° limit) they already interpenetrate, so self-collision near
+  the fold is not trustworthy. An earlier note that the camera box "reproduced" the real wrist_flex stall
+  was an artifact of that (it hit the oversized shoulder box) and was withdrawn.

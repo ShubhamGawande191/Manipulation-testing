@@ -46,7 +46,7 @@ def test_same_joint_interface_as_stock(model):
 def test_mass_past_wrist(model):
     root = model.body("gripper").id
     total = sum(model.body_mass[b] for b in range(model.nbody) if _descends(model, b, root))
-    assert total == pytest.approx(0.247, abs=0.005)
+    assert total == pytest.approx(0.212, abs=0.005)
 
 
 def _descends(model, b, root):
@@ -79,19 +79,28 @@ def test_no_self_contact_at_home(model):
     assert d.ncon == 0
 
 
-def test_reproduces_observed_camera_mount_stall(model):
-    # config/so101_limits.yaml: real wrist_flex stalled at ~59 deg at this folded pose
+def test_kinematic_coupling_moves_fingers_without_stepping(model):
+    # the twin / FK only call mj_forward; fingers must still follow the servo
+    from robot_manipulator.sim.model import apply_joint_couplings
+
     d = mujoco.MjData(model)
     adr = joint_qpos_adr(model, JOINTS)
-    first = None
-    for wf in np.arange(40.0, 80.0, 0.5):
+    seps = []
+    for g in (0.0, -1.833):
         d.qpos[:] = 0
-        d.qpos[adr[:5]] = np.deg2rad([-3.0, -108.0, 95.5, wf, 110.0])
-        mujoco.mj_forward(model, d)
-        if any(
-            model.geom(c.geom1).name == "camera_box" or model.geom(c.geom2).name == "camera_box"
-            for c in d.contact[: d.ncon]
-        ):
-            first = wf
-            break
-    assert first is not None and 55.0 <= first <= 65.0
+        d.qpos[adr[5]] = g
+        apply_joint_couplings(model, d)
+        mujoco.mj_kinematics(model, d)
+        seps.append(
+            np.linalg.norm(d.body("pinc_right_finger").xpos - d.body("pinc_left_finger").xpos)
+        )
+    assert seps[0] == pytest.approx(0.025, abs=1e-3) and seps[1] > 0.09
+
+
+def test_camera_bracket_points_away_from_base_at_rest(model):
+    # user photos 2026-10-17: at the folded rest pose the bracket sticks out away from the base
+    d = mujoco.MjData(model)
+    adr = joint_qpos_adr(model, JOINTS)
+    d.qpos[adr[:5]] = np.deg2rad([-3.3, -108.0, 96.6, 87.9, -84.8])
+    mujoco.mj_forward(model, d)
+    assert d.geom("camera_lens").xpos[0] > d.body("pinc_base").xpos[0] + 0.05

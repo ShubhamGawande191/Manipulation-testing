@@ -92,3 +92,21 @@ def apply_actuator_fit(model: mujoco.MjModel, fit: str | Path | dict) -> dict[st
         model.dof_armature[d] *= float(p["armature_scale"])
         delays[joint] = int(p["delay_steps"])
     return delays
+
+
+def apply_joint_couplings(model: mujoco.MjModel, data: mujoco.MjData) -> None:
+    """Propagate active joint-equality couplings into ``data.qpos``.
+
+    MuJoCo only enforces equality constraints while stepping. Kinematic-only callers (set qpos,
+    then ``mj_forward``/``mj_kinematics``) must do this themselves, or coupled joints — e.g. the
+    PincOpen arms/fingers that follow the ``gripper`` servo — stay at their reference pose.
+    Joint equality: ``q1 - q1ref = poly(q2 - q2ref)`` with ``polycoef`` in ``eq_data[:5]``.
+    """
+    for i in range(model.neq):
+        if model.eq_type[i] != mujoco.mjtEq.mjEQ_JOINT or not model.eq_active0[i]:
+            continue
+        j1, j2 = model.eq_obj1id[i], model.eq_obj2id[i]
+        a1, a2 = model.jnt_qposadr[j1], model.jnt_qposadr[j2]
+        x = data.qpos[a2] - model.qpos0[a2]
+        c = model.eq_data[i][:5]
+        data.qpos[a1] = model.qpos0[a1] + c[0] + c[1] * x + c[2] * x**2 + c[3] * x**3 + c[4] * x**4

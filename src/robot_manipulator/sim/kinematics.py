@@ -13,6 +13,7 @@ import numpy as np
 from robot_manipulator.sim.model import (
     EE_SITE,
     JOINTS,
+    apply_joint_couplings,
     joint_dof_adr,
     joint_qpos_adr,
     load_model,
@@ -36,6 +37,7 @@ class FK:
         if q.shape != (len(JOINTS),):
             raise ValueError(f"expected {len(JOINTS)} joints, got shape {q.shape}")
         self.data.qpos[self._qadr] = q
+        apply_joint_couplings(self.model, self.data)
 
     def ee_pos(self, q: np.ndarray) -> np.ndarray:
         """End-effector (gripperframe) position in the world frame, meters."""

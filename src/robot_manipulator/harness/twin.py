@@ -31,6 +31,7 @@ LEROBOT_JOINTS = (
     "wrist_roll",
     "gripper",
 )
+ABBREV = ("pan", "lift", "elb", "wfl", "wrl", "grip")
 
 console = Console()
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -58,7 +59,12 @@ def main(
     from lerobot.robots.so_follower import SOFollower
 
     from robot_manipulator.arm import build_follower_config
-    from robot_manipulator.sim.model import JOINTS, joint_qpos_adr, load_model
+    from robot_manipulator.sim.model import (
+        JOINTS,
+        apply_joint_couplings,
+        joint_qpos_adr,
+        load_model,
+    )
 
     jm = JointMap.from_yaml(joint_map)
     if flip:
@@ -81,12 +87,14 @@ def main(
                 vals = {f"{j}.pos": float(pos[j]) for j in LEROBOT_JOINTS}
                 q = jm.lerobot_to_sim(vals)
                 data.qpos[adr] = q
+                apply_joint_couplings(model, data)  # PincOpen fingers follow the servo
                 mujoco.mj_forward(model, data)
                 viewer.sync()
                 if time.monotonic() - last_print > 0.5:
                     last_print = time.monotonic()
-                    deg = "  ".join(f"{j[:8]} {pos[j]:+7.1f}" for j in LEROBOT_JOINTS)
-                    console.print(f"[dim]{deg}[/]", end="\r")
+                    # one overwritten line, short labels so the gripper fits an 80-column terminal
+                    deg = " ".join(f"{a}{pos[j]:+6.1f}" for a, j in zip(ABBREV, LEROBOT_JOINTS))
+                    print(f"\r{deg}  ", end="", flush=True)
                 time.sleep(1.0 / hz)
     finally:
         robot.bus.disconnect(disable_torque=False)

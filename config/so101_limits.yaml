@@ -17,5 +17,8 @@ self_collisions:
       elbow_flex: [94.0, 97.0]
       wrist_roll: [100.0, 120.0]
     note: >
-      Arm folded; the wrist camera mount hits the lower arm. Likely depends mostly on
+      Arm folded; the wrist camera bracket hits the arm. Likely depends mostly on
       wrist_flex x wrist_roll; the shoulder/elbow ranges only record where it was seen.
+      NOT yet reproducible in sim: at this folded pose the Menagerie arm's own coarse box
+      collision geoms already interpenetrate (shoulder/lower_arm/wrist), and shoulder_lift
+      -108 deg is past the MJCF limit (+-100 deg). Needs accurate collision geometry (real2sim).

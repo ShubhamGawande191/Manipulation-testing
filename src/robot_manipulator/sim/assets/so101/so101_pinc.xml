@@ -177,14 +177,16 @@
               <body name="gripper" pos="5.55112e-17 -0.0611 0.0181" quat="0.0172091 -0.0172091 0.706897 0.706897">
                 <!-- Joint from wrist to gripper (wrist_roll link) -->
                 <joint axis="0 0 1" name="wrist_roll" type="hinge" range="-2.7438473 2.8412063" class="sts3215"/>
-                <!-- Horn + PincOpen SO-ARM100 interface plate. TODO-measure: plate thickness (12 mm assumed). -->
-                <inertial pos="0 0 -0.006" mass="0.02" diaginertia="4e-06 4e-06 6e-06"/>
-                <geom name="pinc_interface" type="cylinder" class="collision" size="0.02 0.006" pos="0 0 -0.006"/>
+                <!-- Horn + PincOpen SO-ARM100 interface plate: ~5 mm, palm nearly flush with the wrist
+                     (user photos 2026-10-17). TODO-measure exactly. -->
+                <inertial pos="0 0 -0.0025" mass="0.015" diaginertia="3e-06 3e-06 5e-06"/>
+                <geom name="pinc_interface" type="cylinder" class="collision" size="0.02 0.0025" pos="0 0 -0.0025"
+                  rgba="0.45 0.55 0.4 1"/>
                 <!-- PincOpen palm (Pollen Robotics, CC BY-SA 4.0; meshes + kinematics from CNURobotics/
                      pinc_open_driver, Apache-2.0). Frame: x palm->fingertips (= -z here), y jaw opening,
                      z finger hinge axis. Fingers centred on the wrist_roll axis. -->
-                <body name="pinc_base" pos="0 -0.005 -0.012" quat="-0.5 -0.5 -0.5 0.5">
-                  <inertial pos="0.029 0 0.01" mass="0.11" diaginertia="1.10229e-04 5.15620e-05 1.24667e-04"/>
+                <body name="pinc_base" pos="0 -0.005 -0.005" quat="-0.5 -0.5 -0.5 0.5">
+                  <inertial pos="0.029 0 0.01" mass="0.13" diaginertia="1.30271e-04 6.09370e-05 1.47333e-04"/>
                   <geom type="mesh" class="visual" mesh="pinc_palm" material="pinc_material"/>
                   <geom name="pinc_palm_box" type="box" class="collision" pos="0.029 0 0.0033"
                     size="0.03 0.05 0.01615"/>
@@ -192,14 +194,22 @@
                     size="0.024 0.0125 0.0125"/>
                   <!-- Frame gripperframe: between the fingertips (EE site used by FK / reach) -->
                   <site group="3" name="gripperframe" pos="0.118 0 -0.005"/>
-                  <!-- Wrist camera (eMeet C950) + mount. TODO-measure: size, side and offset are guesses;
-                       validate against the observed wrist_flex stall in config/so101_limits.yaml. -->
-                  <body name="camera_mount" pos="0.015 0 -0.04">
-                    <inertial pos="0 0 0" mass="0.08" diaginertia="3.8667e-05 1.4167e-05 4.0833e-05"/>
-                    <geom name="camera_box" type="box" class="collision" size="0.0175 0.035 0.015"
-                      rgba="0.15 0.15 0.15 1"/>
-                    <geom type="box" class="visual" size="0.0175 0.035 0.015" rgba="0.15 0.15 0.15 1"/>
-                    <camera name="wrist_cam" mode="fixed" pos="0.018 0 0" xyaxes="0 -1 0 0 0 1" fovy="61"/>
+                  <!-- Wrist camera: small board camera on a printed L-bracket (user photos 2026-10-17).
+                       Foot on the palm face (-z_p), strut rising back toward the wrist, horizontal
+                       plate with the lens looking along the fingers. Dimensions estimated from photos;
+                       TODO-measure. Validated against the observed wrist_flex stall (so101_limits.yaml). -->
+                  <body name="camera_mount" pos="0 0 0">
+                    <inertial pos="-0.015 0 -0.06" mass="0.03" diaginertia="2.5e-05 2.0e-05 1.0e-05"/>
+                    <geom name="camera_foot" type="box" class="collision" group="1" pos="0.02 0 -0.019"
+                      size="0.015 0.012 0.006" rgba="0.45 0.55 0.4 1"/>
+                    <geom name="camera_strut" type="capsule" class="collision" group="1" fromto="0.01 0 -0.025 -0.035 0 -0.065"
+                      size="0.005" rgba="0.45 0.55 0.4 1"/>
+                    <geom name="camera_box" type="box" class="collision" group="1" pos="-0.04 0 -0.085"
+                      size="0.0025 0.015 0.025" rgba="0.45 0.55 0.4 1"/>
+                    <geom name="camera_lens" type="cylinder" class="collision" group="1" pos="-0.03 0 -0.09"
+                      quat="0.7071068 0 0.7071068 0" size="0.007 0.008" rgba="0.1 0.1 0.1 1"/>
+                    <!-- looks along +x_p, tilted ~30 deg toward the fingers -->
+                    <camera name="wrist_cam" mode="fixed" pos="-0.022 0 -0.09" xyaxes="0 1 0 0.5 0 -0.866" fovy="61"/>
                   </body>
                   <!-- Driven joint = servo shaft (coupler). 0 = closed, -1.833 = open (105 deg servo
                        travel, steps 3200 -> 2005). Arms/fingers follow via equality constraints. -->
