@@ -61,6 +61,10 @@ The vision tasks use CMD order throughout, with `JOINT_LIMITS`/`_clamp()` in `ta
 
 Hardware tests are marked `@pytest.mark.hw` and deselected by default (`addopts = -m 'not hw'`); run them with `uv run pytest -m hw`. Live MIDI needs `uv sync --extra midi` (rtmidi backend); mic capture needs `--extra audio`. MiniLab 3 shows up as ALSA card `Minilab3`, mido port `Minilab3:Minilab3 MIDI 20:0`.
 
+## Digital twin
+
+`docs/DIGITAL-TWIN-RUNBOOK.md` is the step-by-step procedure (and status table) for building/validating the MuJoCo twin of a real SO-101 bench — calibration, teleop check, end-effector MJCF, joint map + live twin, cameras, extrinsics, scene, actuator fit. Keep its status table and lessons current when any of those stages change. The `digital-twin` skill points to it.
+
 ## Repo hygiene note
 
 The ~26 ad-hoc root experiment scripts (`test_*.py`, `patch*.py`, `req*.py`, `print_*.py`, `verify_wrist.py`) were deleted 2026-07-04 (they were throwaway probes for tuning gains/HSV/servo math; their tuned values already live in `tasks/`). Don't recreate probes in the repo root — put real functionality under `src/robot_manipulator/` and quick experiments outside the repo. `uv run pytest` only runs `tests/` (via `testpaths`).
