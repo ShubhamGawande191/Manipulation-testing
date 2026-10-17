@@ -68,6 +68,6 @@ The ~26 ad-hoc root experiment scripts (`test_*.py`, `patch*.py`, `req*.py`, `pr
 ## Hardware specifics
 
 - Follower: `/dev/so101_follower` (udev symlink, serial 5AA9017934). Leader: `/dev/so101_leader` (serial 5AA9017169, currently broken).
-- Cameras (eMeet C950): workspace = OpenCV index 0, wrist = index 2 (odd `/dev/video*` nodes are metadata). Indices shift on reboot — verify with `uv run lerobot-find-cameras opencv`.
+- Cameras (eMeet C950 ×2, same USB serial): identified by USB-port path in `config/cameras.yaml` (`/dev/v4l/by-path/...`; workspace = port 2.2, wrist = port 2.1.4 via hub). `/dev/videoN` indices shuffle on replug — never hardcode them. Exposure/white balance are locked by `uv run cam-setup` (resets on replug). Workspace lens ~55 cm above the table; robot base plate ~2.75 cm above the table.
 - Serial permission errors: `sudo usermod -aG dialout $USER` then re-login.
 - `config/so101.yaml` holds ports/camera indices; secrets (HF_TOKEN) go in `.env`. OpenClaw/CMDOP was removed 2026-10-10 (security; abandoned route) — don't reintroduce it.

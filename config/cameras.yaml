@@ -1,0 +1,30 @@
+# Stable camera identities + locked image settings (2026-10-17).
+#
+# Both eMeet C950 webcams report the same USB serial (SN0001), so /dev/v4l/by-id cannot tell them
+# apart and /dev/videoN indices shuffle on replug. /dev/v4l/by-path is stable as long as each
+# camera stays in the SAME USB port. If you move a camera, run `uv run cam-setup --list` and
+# update the path here.
+#
+# Controls are applied in order with v4l2-ctl (auto modes must be switched off before their
+# manual values take effect). They reset on replug/reboot: `uv run cam-setup` re-applies them.
+# Locked exposure/white balance keep colours stable across frames and episodes (data quality).
+cameras:
+  workspace:
+    path: /dev/v4l/by-path/pci-0000:06:00.4-usb-0:2.2:1.0-video-index0
+    height_above_table_m: 0.55   # lens front surface, user estimate
+    controls:
+      exposure_dynamic_framerate: 0
+      auto_exposure: 1           # 1 = manual
+      exposure_time_absolute: 300
+      white_balance_automatic: 0
+      white_balance_temperature: 3800
+      gain: 10
+  wrist:
+    path: /dev/v4l/by-path/pci-0000:06:00.3-usb-0:2.1.4:1.0-video-index0
+    controls:
+      exposure_dynamic_framerate: 0
+      auto_exposure: 1
+      exposure_time_absolute: 300
+      white_balance_automatic: 0
+      white_balance_temperature: 3800
+      gain: 10

@@ -129,8 +129,9 @@ def test_sim_backend_reset_places_pose():
 
 
 def test_lerobot_refuses_live_when_uncalibrated():
-    jm = JointMap.from_yaml(REPO_CFG)
-    assert jm.calibrated is False
+    import dataclasses
+
+    jm = dataclasses.replace(JointMap.from_yaml(REPO_CFG), calibrated=False)
     with pytest.raises(RuntimeError, match="calibrated"):
         LeRobotBackend("unused", jm, dry_run=False, robot=FakeRobot(_obs_deg()))
 

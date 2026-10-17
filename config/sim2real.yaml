@@ -7,14 +7,16 @@
 # The values below are placeholders. Fill them in during hardware ticket H2 (see
 # docs/HARNESS-SIM2REAL-PLAN.md), then set calibrated: true. A real-robot run is refused
 # while calibrated is false.
-calibrated: false
+# H2 done 2026-10-17: signs/offsets validated with the live twin (`uv run twin`) against the real
+# follower (calibration rewritten by calib-recal the same day; MJCF "new calib" zero = range midpoint).
+calibrated: true
 
 joints:
-  shoulder_pan: {sign: 1, offset_deg: 0.0}   # TODO-H2
-  shoulder_lift: {sign: 1, offset_deg: 0.0}  # TODO-H2
-  elbow_flex: {sign: 1, offset_deg: 0.0}     # TODO-H2
-  wrist_flex: {sign: 1, offset_deg: 0.0}     # TODO-H2
-  wrist_roll: {sign: 1, offset_deg: 0.0}     # TODO-H2
+  shoulder_pan: {sign: 1, offset_deg: 0.0}   # H2: validated 2026-10-17
+  shoulder_lift: {sign: 1, offset_deg: 0.0}  # H2: validated 2026-10-17
+  elbow_flex: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
+  wrist_flex: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
+  wrist_roll: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
 
 # Linear map. LeRobot value lerobot_open maps to sim_open, and lerobot_closed maps to
 # sim_closed. Values outside the range are clipped.

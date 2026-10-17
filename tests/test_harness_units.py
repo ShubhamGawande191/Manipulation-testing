@@ -33,9 +33,11 @@ def lerobot_dict(rng: np.random.Generator) -> dict[str, float]:
     return d
 
 
-def test_repo_config_loads_and_is_uncalibrated():
+def test_repo_config_loads():
+    # calibrated: true since hardware ticket H2 (2026-10-17); the guard itself is tested with
+    # explicit uncalibrated maps elsewhere
     jm = JointMap.from_yaml(REPO_CFG)
-    assert jm.calibrated is False
+    assert isinstance(jm.calibrated, bool)
     assert set(jm.body) == set(BODY_JOINTS)
 
 

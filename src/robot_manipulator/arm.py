@@ -23,8 +23,8 @@ from lerobot.teleoperators.so_leader.config_so_leader import SOLeaderTeleopConfi
 def build_follower_config(
     port: str,
     robot_id: str = "my_so101_follower",
-    workspace_cam_index: int = 0,
-    wrist_cam_index: int = 2,
+    workspace_cam_index: int | str | None = None,
+    wrist_cam_index: int | str | None = None,
     fps: int = 5,
     width: int = 1920,
     height: int = 1080,
@@ -39,9 +39,18 @@ def build_follower_config(
 
     Set *cameras=False* to skip camera initialization (useful for joint-only
     operations where camera setup overhead is unwanted).
+
+    Camera defaults come from ``config/cameras.yaml`` (stable ``/dev/v4l/by-path`` per USB port);
+    ``/dev/videoN`` indices shuffle on replug. Run ``uv run cam-setup`` to lock exposure first.
     """
     cam_dict = {}
     if cameras:
+        from robot_manipulator.cameras import camera_path
+
+        if workspace_cam_index is None:
+            workspace_cam_index = camera_path("workspace")
+        if wrist_cam_index is None:
+            wrist_cam_index = camera_path("wrist")
         cam_dict = {
             "workspace": OpenCVCameraConfig(
                 index_or_path=workspace_cam_index,

@@ -98,7 +98,9 @@ def test_real_backend_refuses_live_while_uncalibrated(artifact, tmp_path):
     """The calibration guard runs before any serial connection, so this touches no hardware."""
     from robot_manipulator.harness.units import JointMap
 
-    cfg = Path(__file__).resolve().parents[1] / "config" / "sim2real.yaml"
+    repo_cfg = Path(__file__).resolve().parents[1] / "config" / "sim2real.yaml"
+    cfg = tmp_path / "sim2real_uncalibrated.yaml"
+    cfg.write_text(repo_cfg.read_text().replace("calibrated: true", "calibrated: false"))
     assert JointMap.from_yaml(cfg).calibrated is False
     with pytest.raises(RuntimeError, match="calibrated"):
         run_reach(
