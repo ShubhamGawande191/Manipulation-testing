@@ -145,9 +145,11 @@ def test_wrist_roll_homing_difference_is_about_110_deg():
     assert offsets["wrist_roll"] == pytest.approx(110.0, abs=0.1)
 
 
-def test_frame_issues_flag_wrist_roll_and_pan():
-    flagged = {i.joint for i in frame_issues(frame_mismatch(FOLLOWER, LEADER))}
-    assert {"wrist_roll", "shoulder_pan"} <= flagged
+def test_frame_mismatch_only_full_turn_joints():
+    # raw counts of range-defined joints are not comparable across physical arms
+    offsets = frame_mismatch(FOLLOWER, LEADER)
+    assert set(offsets) == {"wrist_roll"}
+    assert {i.joint for i in frame_issues(offsets)} == {"wrist_roll"}
 
 
 def test_zero_raw_follows_lerobot_convention():

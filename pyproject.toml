@@ -57,6 +57,7 @@ sim-train-reach = "robot_manipulator.sim.train_reach:app"
 harness = "robot_manipulator.harness.cli:app"
 teleop = "robot_manipulator.tasks.teleop_staged:app"
 calib-check = "robot_manipulator.calib.check:app"
+calib-recal = "robot_manipulator.calib.recal:app"
 
 [build-system]
 requires = ["hatchling"]

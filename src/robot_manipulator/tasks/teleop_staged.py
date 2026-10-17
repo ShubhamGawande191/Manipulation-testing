@@ -42,9 +42,11 @@ DEFAULT_PID = (16, 0, 32)
 STAGE_TOL = 2.0  # deg (gripper: % of range)
 SETTLE_S = 1.5  # max wait for joints to follow after a staging move
 LOAD_EVERY = 5  # read Present_Load every N ticks (bus time)
-# Follower arm rest pose (deg), measured 2026-10-17 at the start of the first teleop run: the
-# arm folded on itself, safe to drop torque. The gripper is left wherever it is when parking.
-REST_ARM = np.array([-21.1, -102.8, 92.9, 72.4, -121.4])
+# Follower arm rest pose (deg): the arm folded on itself, safe to drop torque. Measured 2026-10-17
+# and converted to the frame written by `calib-recal` that day (pan/elbow/wrist re-swept,
+# wrist_roll aligned to the leader). Re-derive if the follower is recalibrated again. The gripper is
+# left wherever it is when parking.
+REST_ARM = np.array([-3.3, -102.8, 96.1, 78.2, -85.0])
 MAX_LEADER_MISSES = 10  # consecutive failed leader reads (0.2 s at 50 Hz) before stopping
 RUNS_DIR = Path("runs/teleop")
 

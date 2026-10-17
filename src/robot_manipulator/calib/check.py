@@ -79,11 +79,13 @@ def _wrap_deg(x: float) -> float:
 def frame_mismatch(
     cal_a: dict[str, dict[str, int]], cal_b: dict[str, dict[str, int]]
 ) -> dict[str, float]:
-    """Estimated zero offset of arm A relative to arm B, in degrees, per joint (gripper excluded).
+    """Estimated zero offset of arm A relative to arm B, in degrees, for full-turn joints only.
 
-    Range-defined joints: `(zero_raw_a - zero_raw_b) * 360/4096`.
-    Full-turn joints: `(homing_a - homing_b) * 360/4096`, which is the same formula when both
-    ranges are 0..4095. Indicative only. See the module docstring.
+    Full-turn joints (range 0..4095, e.g. wrist_roll): `(homing_a - homing_b) * 360/4096`.
+    Range-defined joints are omitted: their zero is the midpoint of the swept mechanical range,
+    and raw encoder counts are not comparable across two physical arms (each servo horn is
+    mounted at a different spline position). Use `fleet_check` (range completeness) for those.
+    Indicative only — physical alignment is the ground truth. See the module docstring.
     """
     out: dict[str, float] = {}
     for joint, a in cal_a.items():
@@ -92,9 +94,7 @@ def frame_mismatch(
         b = cal_b[joint]
         if is_full_turn(a) and is_full_turn(b):
             counts = a["homing_offset"] - b["homing_offset"]
-        else:
-            counts = zero_raw(a) - zero_raw(b)
-        out[joint] = _wrap_deg(counts * DEG_PER_COUNT)
+            out[joint] = _wrap_deg(counts * DEG_PER_COUNT)
     return out
 
 
