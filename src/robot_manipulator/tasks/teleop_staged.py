@@ -39,6 +39,9 @@ JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_ro
 STAGE_ORDER = ("shoulder_lift", "elbow_flex", "wrist_flex", "shoulder_pan", "wrist_roll", "gripper")
 # LeRobot SOFollower.configure() defaults.
 DEFAULT_PID = (16, 0, 32)
+# Gravity-loaded joints sag at P=16 with the PincOpen: elbow settled 3.7° short, 0.14° at P=24
+# (2026-10-17 teleop runs); shoulder_lift showed -1.1° steady error at 16.
+JOINT_PID = {"shoulder_lift": (24, 0, 32), "elbow_flex": (24, 0, 32)}
 STAGE_TOL = 2.0  # deg (gripper: % of range)
 SETTLE_S = 1.5  # max wait for joints to follow after a staging move
 LOAD_EVERY = 5  # read Present_Load every N ticks (bus time)
@@ -47,6 +50,9 @@ LOAD_EVERY = 5  # read Present_Load every N ticks (bus time)
 # wrist_roll aligned to the leader). Re-derive if the follower is recalibrated again. The gripper is
 # left wherever it is when parking.
 REST_ARM = np.array([-3.3, -102.8, 96.1, 78.2, -85.0])
+# Leader rest pose (deg), read at the start of the 2026-10-17 teleop run with the leader folded.
+LEADER_REST_ARM = np.array([-3.1, -107.0, 96.6, 77.3, -85.1])
+LEADER_TORQUE_LIMIT = 300  # permille (RAM Torque_Limit): gentle, a hand can overpower it
 MAX_LEADER_MISSES = 10  # consecutive failed leader reads (0.2 s at 50 Hz) before stopping
 RUNS_DIR = Path("runs/teleop")
 
@@ -185,7 +191,7 @@ def _connect_follower(port: str, robot_id: str, pid: dict[str, tuple[int, int, i
     bus.disable_torque()
     bus.configure_motors()
     for motor in JOINTS:
-        p, i, d = pid.get(motor, DEFAULT_PID)
+        p, i, d = pid.get(motor, JOINT_PID.get(motor, DEFAULT_PID))
         bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
         bus.write("P_Coefficient", motor, p)
         bus.write("I_Coefficient", motor, i)
@@ -249,6 +255,29 @@ def _park_and_release(robot, target: np.ndarray, speed: float, hz: float) -> Non
         signal.signal(signal.SIGINT, previous)
 
 
+def _park_leader(leader, speed: float, hz: float) -> None:
+    """Drive the leader back to LEADER_REST_ARM under a low torque limit, then release it.
+
+    The leader is normally unpowered so it can be back-driven; its 5 V servos can still position
+    themselves gently. The gripper/trigger is left where it is.
+    """
+    bus = leader.bus
+    here = _bus_pos(leader)
+    _send(leader, here)  # Goal = Present: enabling torque must not jump
+    for motor in JOINTS:
+        bus.write("Torque_Limit", motor, LEADER_TORQUE_LIMIT)
+    for motor in STAGE_ORDER:
+        bus.enable_torque(motor)
+    try:
+        cmd = here
+        target = np.r_[LEADER_REST_ARM, here[-1]]
+        for _name, wp in stage_targets(cmd, target, tuple(reversed(STAGE_ORDER))):
+            cmd = _glide(leader, cmd, wp, speed, hz)
+    finally:
+        bus.disable_torque()
+    console.print("[green]leader parked, torque off[/]")
+
+
 def _print_summary(summary: dict[str, dict[str, float]]) -> None:
     table = Table(title="Tracking (cmd − present) and load")
     for col in ("joint", "mean|e|", "p95|e|", "max|e|", "steady e", "load mean", "load max"):
@@ -282,6 +311,9 @@ def main(
     park: bool = typer.Option(
         True, "--park/--no-park", help="return to start pose before torque off"
     ),
+    park_leader: bool = typer.Option(
+        True, "--park-leader/--no-park-leader", help="drive the leader to its rest pose at the end"
+    ),
     park_only: bool = typer.Option(
         False, "--park-only", help="no teleop: glide the follower to REST_ARM and drop torque"
     ),
@@ -297,7 +329,10 @@ def main(
         finally:
             robot.bus.disconnect(disable_torque=False)
         return
-    console.print(f"[cyan]PID[/] default {DEFAULT_PID}, overrides {overrides or 'none'}")
+    console.print(
+        f"[cyan]PID[/] default {DEFAULT_PID}, per-joint {JOINT_PID}, "
+        f"overrides {overrides or 'none'}"
+    )
 
     leader = SOLeader(SOLeaderTeleopConfig(port=leader_port, id=leader_id))
     for attempt in range(3):  # leader ID 2 missed handshakes when overvolted (12 V on a 5 V arm)
@@ -376,6 +411,11 @@ def main(
                         robot.bus.disable_torque(motor)
             finally:
                 robot.bus.disconnect(disable_torque=False)
+        if park_leader:
+            try:
+                _park_leader(leader, stage_speed, hz)
+            except (Exception, KeyboardInterrupt) as exc:  # leader parking must not hide results
+                console.print(f"[yellow]leader park skipped: {exc}[/]")
         leader.disconnect()
 
     if log.t:

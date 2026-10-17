@@ -1,0 +1,21 @@
+# Observed joint-space hazards for this follower (PincOpen gripper + wrist camera mount).
+# Units: degrees, LeRobot DEGREES frame of the follower calibration written by calib-recal 2026-10-17.
+# Status "observed" means seen once in a teleop trace, not swept. The intended source of truth is
+# self-collision checking against the robot MJCF once the camera mount and PincOpen geometry are
+# modelled (real2sim); entries here are the evidence that model must reproduce.
+
+robot: my_so101_follower
+self_collisions:
+  - name: wrist_camera_mount_vs_forearm
+    status: observed
+    evidence: runs/teleop/20261017-204250.parquet
+    # wrist_flex stalled at ~59 deg while commanded ~76 deg, load up to 88 % of max torque
+    blocked_joint: wrist_flex
+    blocked_above: 57.0
+    when:
+      shoulder_lift: [-110.0, -106.0]
+      elbow_flex: [94.0, 97.0]
+      wrist_roll: [100.0, 120.0]
+    note: >
+      Arm folded; the wrist camera mount hits the lower arm. Likely depends mostly on
+      wrist_flex x wrist_roll; the shoulder/elbow ranges only record where it was seen.
