@@ -59,6 +59,11 @@ HOME_ARM = np.array([0.0, -1.57, 1.57, 0.0, 0.0])  # matches so101_bridge.HOME, 
 RESET_NOISE = 0.1  # rad, uniform per arm joint
 GRIPPER_HOLD = -1.833  # rad, PincOpen fully open = sim_open in config/sim2real.yaml
 SUCCESS_TOL = 0.02  # m
+# Reach targets (EE site, base frame, m): the table workspace in front of the robot. Without it,
+# joint-space sampling also produced targets behind/above the base (arm folded over itself):
+# 80 % of the PincOpen policy's failures were there (mean x -0.04 m), and that region is both
+# useless for table tasks and where the coarse collision geoms are untrustworthy.
+TARGET_BOX = (np.array([0.10, -0.25, 0.02]), np.array([0.40, 0.25, 0.30]))
 FINE_STD = 0.05  # m, width of the tanh "fine reach" reward kernel
 N_ARM = 5
 OBS_DIM = 24
@@ -169,7 +174,9 @@ class ReachEnv(gym.Env):
             self._bias = np.zeros(N_ARM)
         mujoco.mj_setConst(self.model, self.data)
 
-        _, ee_target = self.fk.sample_reachable(rng, 1, self.target_lo, self.target_hi)
+        _, ee_target = self.fk.sample_reachable(
+            rng, 1, self.target_lo, self.target_hi, box=TARGET_BOX
+        )
         self.target = ee_target[0].copy()
 
         q0 = np.clip(

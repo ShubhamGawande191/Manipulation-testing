@@ -63,8 +63,10 @@ class FK:
         z_min: float = 0.05,
         gripper: float = 0.0,
         max_tries_per_sample: int = 200,
+        box: tuple[np.ndarray, np.ndarray] | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Sample n arm configurations inside [lo, hi] whose end effector has z >= z_min.
+        """Sample n arm configurations inside [lo, hi] whose end effector has z >= z_min
+        and, if `box=(lo_xyz, hi_xyz)` is given, lies inside that base-frame box.
 
         `lo`/`hi` cover the five arm joints, or all six (the last entry is ignored). The
         gripper is fixed at `gripper`. Returns `(q[n, 6], ee[n, 3])`. Collisions are not checked.
@@ -83,7 +85,8 @@ class FK:
             tries += 1
             q = np.r_[rng.uniform(lo, hi), gripper]
             ee = self.ee_pos(q)
-            if ee[2] >= z_min:
+            in_box = box is None or bool(np.all(ee >= box[0]) and np.all(ee <= box[1]))
+            if ee[2] >= z_min and in_box:
                 qs.append(q)
                 ees.append(ee)
         return np.asarray(qs).reshape(-1, len(JOINTS)), np.asarray(ees).reshape(-1, 3)

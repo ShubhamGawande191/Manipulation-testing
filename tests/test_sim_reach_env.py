@@ -163,3 +163,11 @@ def test_ik_policy_reaches_most_targets_without_dr():
                 break
         successes += bool(info["success"])
     assert successes >= 16, f"only {successes}/20 targets reached"
+
+
+def test_targets_stay_in_table_workspace():
+    from robot_manipulator.sim.envs.reach import TARGET_BOX
+
+    env = ReachEnv(dr=DRConfig(enabled=False))
+    targets = np.array([env.reset(seed=i)[1]["target"] for i in range(50)])
+    assert (targets >= TARGET_BOX[0]).all() and (targets <= TARGET_BOX[1]).all()
