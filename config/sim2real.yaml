@@ -19,7 +19,7 @@ joints:
 # Linear map. LeRobot value lerobot_open maps to sim_open, and lerobot_closed maps to
 # sim_closed. Values outside the range are clipped.
 gripper:
-  lerobot_open: 0.0        # TODO-H2: confirm 0 is open on this servo calibration
-  lerobot_closed: 100.0
-  sim_open: 1.74533        # rad, MJCF gripper range upper bound
-  sim_closed: -0.17453     # rad, MJCF gripper range lower bound  (TODO-H2)
+  lerobot_open: 100.0      # LeRobot convention 0 = closed, 100 = open (follower gripper drive_mode 1)
+  lerobot_closed: 0.0
+  sim_open: -1.833         # rad, PincOpen coupler joint in sim/assets/so101/so101_pinc.xml (105 deg servo travel)
+  sim_closed: 0.0          # rad, fingers touching

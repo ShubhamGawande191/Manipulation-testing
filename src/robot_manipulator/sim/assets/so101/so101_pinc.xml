@@ -1,0 +1,259 @@
+<mujoco model="so101_pinc">
+  <option integrator="implicitfast" timestep="0.005" cone="elliptic" iterations="10" ls_iterations="20" impratio="10"/>
+
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+
+  <visual>
+    <scale contactwidth="0.1" contactheight="0.05" forcewidth="0.02" framelength="0.75" framewidth="0.025"
+      camera="0.2"/>
+  </visual>
+
+  <default>
+    <mesh maxhullvert="128"/>
+
+    <default class="so101">
+      <joint damping="1" frictionloss="0.1" armature="0.005"/>
+      <position kp="50"/>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom group="3" condim="3"/>
+      </default>
+      <default class="collision_gripper">
+        <geom group="3" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
+      </default>
+      <default class="collision_gripper_mesh">
+        <geom group="4" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
+      </default>
+    </default>
+
+    <default class="sts3215">
+      <geom contype="0" conaffinity="0"/>
+      <joint damping="0.60" frictionloss="0.052" armature="0.028"/>
+      <!-- These gains are not a 1-to-1 mapping of the servo gains used in
+           Lerobot. These position gains and forces were calculated according to
+           https://github.com/Gregory119/RBE501-RL-arm-project/blob/main/gymnasium_env/README.md,
+           assuming that the servo proportional gain is set to 16. -->
+      <position kp="998.22" kv="2.731" forcerange="-2.94 2.94"/>
+    </default>
+
+    <default class="pinc_link">
+      <joint damping="0.005" armature="0.0001" frictionloss="0" limited="false"/>
+    </default>
+
+    <default class="backlash">
+      <!-- +/- 0.5° of backlash – not added to any joints for now -->
+      <joint damping="0.01" frictionloss="0" armature="0.01" limited="true" range="-0.0087267 0.0087267"/>
+    </default>
+  </default>
+
+  <asset>
+    <mesh file="waveshare_mounting_plate_so101_v2.stl"/>
+    <mesh file="sts3215_03a_v1.stl"/>
+    <mesh file="motor_holder_so101_base_v1.stl"/>
+    <mesh file="wrist_roll_follower_so101_v1.stl"/>
+    <mesh file="moving_jaw_so101_v1.stl"/>
+    <mesh file="base_motor_holder_so101_v1.stl"/>
+    <mesh file="upper_arm_so101_v1.stl"/>
+    <mesh file="wrist_roll_pitch_so101_v2.stl"/>
+    <mesh file="under_arm_so101_v1.stl"/>
+    <mesh file="rotation_pitch_so101_v1.stl"/>
+    <mesh file="motor_holder_so101_wrist_v1.stl"/>
+    <mesh file="sts3215_03a_no_horn_v1.stl"/>
+    <mesh file="base_so101_v2.stl"/>
+    <mesh file="moving_jaw_so101_gripper_v1.stl"/>
+    <mesh file="wrist_roll_follower_so101_camera_mount.stl"/>
+    <!-- Gripper collision meshes. -->
+    <mesh maxhullvert="64" file="wrist_roll_follower_so101_gripper_part0_v1.stl"/>
+    <mesh maxhullvert="64" file="moving_jaw_so101_gripper_part0_v1.stl"/>
+    <mesh maxhullvert="64" file="moving_jaw_so101_gripper_part1_v1.stl"/>
+    <material name="base_motor_holder_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="base_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="sts3215_03a_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="waveshare_mounting_plate_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="motor_holder_so101_base_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="rotation_pitch_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="upper_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="under_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="motor_holder_so101_wrist_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="sts3215_03a_no_horn_v1_material" rgba="0.1 0.1 0.1 1.0"/>
+    <material name="wrist_roll_pitch_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="wrist_roll_follower_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="moving_jaw_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <!-- PincOpen gripper (CNURobotics/pinc_open_driver simple meshes, mm). -->
+    <mesh name="pinc_palm" file="gripper_hand_w_motor_simple.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="pinc_right_arm" file="gripper_right_arm_simple.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="pinc_left_arm" file="gripper_left_arm_simple.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="pinc_right_finger" file="gripper_right_finger_simple.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="pinc_left_finger" file="gripper_left_finger_simple.stl" scale="0.001 0.001 0.001"/>
+    <material name="pinc_material" rgba="0.2 0.35 0.25 1"/>
+    <material name="pinc_link_material" rgba="0.1 0.1 0.1 1"/>
+  </asset>
+
+  <worldbody>
+    <!-- Link base -->
+    <body name="base" pos="0 0 0" quat="1 0 0 0" childclass="so101">
+      <inertial pos="0.0137179 -5.19711e-05 0.0334843" mass="0.147"
+        fullinertia="0.000114686 0.000136117 0.000130364 -4.59787e-07 4.97151e-06 9.75275e-08"/>
+      <!-- Part base_motor_holder_so101_v1 -->
+      <geom type="mesh" class="visual" pos="-0.006365 -9.9e-05 -0.0024" quat="1 1 1 1" mesh="base_motor_holder_so101_v1"
+        material="base_motor_holder_so101_v1_material"/>
+      <!-- Part base_so101_v2 -->
+      <geom type="mesh" class="visual" pos="-0.006365 0 -0.0024" quat="1 1 1 1" mesh="base_so101_v2"
+        material="base_so101_v2_material"/>
+      <!-- Part sts3215_03a_v1 -->
+      <geom type="mesh" class="visual" pos="0.0263353 0 0.0437" quat="1 0 0 0" mesh="sts3215_03a_v1"
+        material="sts3215_03a_v1_material"/>
+      <!-- Part waveshare_mounting_plate_so101_v2 -->
+      <geom type="mesh" class="visual" pos="-0.0309827 -0.000199 0.0474" quat="1 1 1 1"
+        mesh="waveshare_mounting_plate_so101_v2" material="waveshare_mounting_plate_so101_v2_material"/>
+      <!-- Frame baseframe -->
+      <site group="3" name="baseframe" pos="0 0 0" quat="1 0 0 0"/>
+      <!-- Link shoulder -->
+      <body name="shoulder" pos="0.0388353 0 0.0624" quat="0 0 -1 0">
+        <!-- Joint from base to shoulder -->
+        <joint axis="0 0 1" name="shoulder_pan" type="hinge" range="-1.91986 1.91986" class="sts3215"/>
+        <inertial pos="-0.0307604 -1.7e-05 -0.0252713" mass="0.100006"
+          fullinertia="8.3759e-05 8.10403e-05 2.39783e-05 7.55525e-08 -1.16342e-06 1.54663e-07"/>
+        <!-- Part sts3215_03a_v1_2 -->
+        <geom type="mesh" class="visual" pos="-0.030399 0.000422 -0.0417" quat="1 1 1 -1" mesh="sts3215_03a_v1"
+          material="sts3215_03a_v1_material"/>
+        <geom type="box" class="collision" pos="-0.030399 0.000422 -0.0387" quat="1 1 1 -1" size="0.023 0.015 0.01"/>
+        <!-- Part motor_holder_so101_base_v1 -->
+        <geom type="mesh" class="visual" pos="-0.067599 -0.0001778 0.01585" quat="1 1 -1 1"
+          mesh="motor_holder_so101_base_v1" material="motor_holder_so101_base_v1_material"/>
+        <geom type="box" class="collision" pos="-0.025 0 0.0" quat="1 1 -1 1" size="0.038 0.025 0.02"/>
+        <!-- Part rotation_pitch_so101_v1 -->
+        <geom type="mesh" class="visual" pos="0.012201 2.2e-05 0.0464" quat="1 -1 0 0" mesh="rotation_pitch_so101_v1"
+          material="rotation_pitch_so101_v1_material"/>
+        <!-- Link upper_arm -->
+        <body name="upper_arm" pos="-0.0303992 -0.0182778 -0.0542" quat="1 -1 -1 -1">
+          <!-- Joint from shoulder to upper_arm -->
+          <joint axis="0 0 1" name="shoulder_lift" type="hinge" range="-1.7453293 1.7453293" class="sts3215"/>
+          <inertial pos="-0.089847 -0.008382 0.018409" mass="0.103"
+            fullinertia="4.08002e-05 0.000147318 0.000142487 -1.97819e-05 -4.03016e-08 8.97326e-09"/>
+          <!-- Part sts3215_03a_v1_3 -->
+          <geom type="mesh" class="visual" pos="-0.11257 -0.0155 0.0187" quat="0 -1 1 0" mesh="sts3215_03a_v1"
+            material="sts3215_03a_v1_material"/>
+          <geom type="box" class="collision" pos="-0.06 0 0.02" quat="0 -1 1 0" size="0.01 0.07 0.03"/>
+          <!-- Part upper_arm_so101_v1 -->
+          <geom type="mesh" class="visual" pos="-0.065085 0.012 0.0182" quat="0 1 0 0" mesh="upper_arm_so101_v1"
+            material="upper_arm_so101_v1_material"/>
+          <geom type="box" class="collision" pos="-0.12 -0.014 0.0182" quat="0 1 0 0" size="0.01 0.02 0.015"/>
+          <!-- Link lower_arm -->
+          <body name="lower_arm" pos="-0.11257 -0.028 0" quat="1 0 0 1">
+            <!-- Joint from upper_arm to lower_arm -->
+            <!-- Note: 5-degree calibration offset applied to joint range -->
+            <joint axis="0 0 1" name="elbow_flex" type="hinge" range="-1.69 1.69" class="sts3215"/>
+            <inertial pos="-0.098070 0.0032438 0.018283" mass="0.104"
+              fullinertia="2.87438e-05 0.000159844 0.00014529 7.41152e-06 1.26409e-06 -4.90188e-08"/>
+            <!-- Part under_arm_so101_v1 -->
+            <geom type="mesh" class="visual" pos="-0.06485 -0.032 0.0182" quat="0 1 0 0" mesh="under_arm_so101_v1"
+              material="under_arm_so101_v1_material"/>
+            <geom type="box" class="collision" pos="-0.05 0 0.0182" quat="0 1 0 0" size="0.07 0.01 0.03"/>
+            <!-- Part motor_holder_so101_wrist_v1 -->
+            <geom type="mesh" class="visual" pos="-0.06485 -0.032 0.018" quat="0 -1 0 0"
+              mesh="motor_holder_so101_wrist_v1" material="motor_holder_so101_wrist_v1_material"/>
+            <geom type="box" class="collision" pos="-0.125 0.005 0.018" quat="0 -1 0 0" size="0.023 0.013 0.018"/>
+            <!-- Part sts3215_03a_v1_4 -->
+            <geom type="mesh" class="visual" pos="-0.1224 0.0052 0.0187" quat="0 0 1 0" mesh="sts3215_03a_v1"
+              material="sts3215_03a_v1_material"/>
+            <!-- Link wrist -->
+            <body name="wrist" pos="-0.1349 0.0052 0" quat="1 0 0 -1">
+              <!-- Joint from lower_arm to wrist -->
+              <joint axis="0 0 1" name="wrist_flex" type="hinge" range="-1.658063 1.658063" class="sts3215"/>
+              <inertial pos="-0.000103312 -0.0386143 0.0281156" mass="0.079"
+                fullinertia="3.68263e-05 2.5391e-05 2.1e-05 1.7893e-08 -5.28128e-08 3.6412e-06"/>
+              <!-- Part sts3215_03a_no_horn_v1 -->
+              <geom type="mesh" class="visual" pos="0 -0.0424 0.0306" quat="1 1 1 -1" mesh="sts3215_03a_no_horn_v1"
+                material="sts3215_03a_no_horn_v1_material"/>
+              <geom type="box" class="collision" pos="0 -0.0424 0.0256" quat="1 1 1 -1" size="0.029 0.015 0.018"/>
+              <!-- Part wrist_roll_pitch_so101_v2 -->
+              <geom type="mesh" class="visual" pos="0 -0.028 0.0181" quat="1 -1 -1 -1" mesh="wrist_roll_pitch_so101_v2"
+                material="wrist_roll_pitch_so101_v2_material"/>
+              <geom type="box" class="collision" pos="0 -0.02 0.0191" quat="1 -1 -1 -1" size="0.027 0.01 0.03"/>
+              <!-- Link gripper -->
+              <body name="gripper" pos="5.55112e-17 -0.0611 0.0181" quat="0.0172091 -0.0172091 0.706897 0.706897">
+                <!-- Joint from wrist to gripper (wrist_roll link) -->
+                <joint axis="0 0 1" name="wrist_roll" type="hinge" range="-2.7438473 2.8412063" class="sts3215"/>
+                <!-- Horn + PincOpen SO-ARM100 interface plate. TODO-measure: plate thickness (12 mm assumed). -->
+                <inertial pos="0 0 -0.006" mass="0.02" diaginertia="4e-06 4e-06 6e-06"/>
+                <geom name="pinc_interface" type="cylinder" class="collision" size="0.02 0.006" pos="0 0 -0.006"/>
+                <!-- PincOpen palm (Pollen Robotics, CC BY-SA 4.0; meshes + kinematics from CNURobotics/
+                     pinc_open_driver, Apache-2.0). Frame: x palm->fingertips (= -z here), y jaw opening,
+                     z finger hinge axis. Fingers centred on the wrist_roll axis. -->
+                <body name="pinc_base" pos="0 -0.005 -0.012" quat="-0.5 -0.5 -0.5 0.5">
+                  <inertial pos="0.029 0 0.01" mass="0.11" diaginertia="1.10229e-04 5.15620e-05 1.24667e-04"/>
+                  <geom type="mesh" class="visual" mesh="pinc_palm" material="pinc_material"/>
+                  <geom name="pinc_palm_box" type="box" class="collision" pos="0.029 0 0.0033"
+                    size="0.03 0.05 0.01615"/>
+                  <geom name="pinc_motor_box" type="box" class="collision" pos="0.024 0 0.03"
+                    size="0.024 0.0125 0.0125"/>
+                  <!-- Frame gripperframe: between the fingertips (EE site used by FK / reach) -->
+                  <site group="3" name="gripperframe" pos="0.118 0 -0.005"/>
+                  <!-- Wrist camera (eMeet C950) + mount. TODO-measure: size, side and offset are guesses;
+                       validate against the observed wrist_flex stall in config/so101_limits.yaml. -->
+                  <body name="camera_mount" pos="0.015 0 -0.04">
+                    <inertial pos="0 0 0" mass="0.08" diaginertia="3.8667e-05 1.4167e-05 4.0833e-05"/>
+                    <geom name="camera_box" type="box" class="collision" size="0.0175 0.035 0.015"
+                      rgba="0.15 0.15 0.15 1"/>
+                    <geom type="box" class="visual" size="0.0175 0.035 0.015" rgba="0.15 0.15 0.15 1"/>
+                    <camera name="wrist_cam" mode="fixed" pos="0.018 0 0" xyaxes="0 -1 0 0 0 1" fovy="61"/>
+                  </body>
+                  <!-- Driven joint = servo shaft (coupler). 0 = closed, -1.833 = open (105 deg servo
+                       travel, steps 3200 -> 2005). Arms/fingers follow via equality constraints. -->
+                  <body name="pinc_coupler" pos="0.053492 0 0">
+                    <joint axis="0 0 1" name="gripper" type="hinge" range="-1.833 0" class="sts3215"/>
+                    <inertial pos="0 0 0" mass="0.001" diaginertia="1e-08 1e-08 1e-08"/>
+                  </body>
+                  <body name="pinc_right_arm" pos="0.053492 -0.0325 -0.008">
+                    <joint axis="0 0 1" name="pinc_right_arm" class="pinc_link"/>
+                    <inertial pos="0.018 0.01 0.008" mass="0.008" diaginertia="3.63e-07 1.617e-06 1.446e-06"/>
+                    <geom type="mesh" class="visual" mesh="pinc_right_arm" material="pinc_link_material"/>
+                    <geom type="mesh" class="collision" mesh="pinc_right_arm"/>
+                    <body name="pinc_right_finger" pos="0.034641 0.020 -0.0002">
+                      <joint axis="0 0 1" name="pinc_right_finger" class="pinc_link"/>
+                      <inertial pos="0.016 -0.008 0.008" mass="0.010" diaginertia="7.08e-07 1.854e-06 1.521e-06"/>
+                      <geom type="mesh" class="visual" mesh="pinc_right_finger" material="pinc_material"/>
+                      <geom type="mesh" class="collision_gripper_mesh" mesh="pinc_right_finger"/>
+                    </body>
+                  </body>
+                  <body name="pinc_left_arm" pos="0.053492 0.0325 -0.008">
+                    <joint axis="0 0 1" name="pinc_left_arm" class="pinc_link"/>
+                    <inertial pos="0.018 -0.01 0.008" mass="0.008" diaginertia="3.63e-07 1.617e-06 1.446e-06"/>
+                    <geom type="mesh" class="visual" mesh="pinc_left_arm" material="pinc_link_material"/>
+                    <geom type="mesh" class="collision" mesh="pinc_left_arm"/>
+                    <body name="pinc_left_finger" pos="0.034641 -0.020 0.0002">
+                      <joint axis="0 0 1" name="pinc_left_finger" class="pinc_link"/>
+                      <inertial pos="0.016 0.008 0.008" mass="0.010" diaginertia="7.08e-07 1.854e-06 1.521e-06"/>
+                      <geom type="mesh" class="visual" mesh="pinc_left_finger" material="pinc_material"/>
+                      <geom type="mesh" class="collision_gripper_mesh" mesh="pinc_left_finger"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <equality>
+    <!-- PincOpen four-bar: arms = +/-0.5 servo, fingers counter-rotate so they stay parallel -->
+    <joint joint1="pinc_right_arm" joint2="gripper" polycoef="0 0.5 0 0 0" solref="0.005 1"/>
+    <joint joint1="pinc_left_arm" joint2="gripper" polycoef="0 -0.5 0 0 0" solref="0.005 1"/>
+    <joint joint1="pinc_right_finger" joint2="gripper" polycoef="0 -0.5 0 0 0" solref="0.005 1"/>
+    <joint joint1="pinc_left_finger" joint2="gripper" polycoef="0 0.5 0 0 0" solref="0.005 1"/>
+  </equality>
+
+  <actuator>
+    <position class="sts3215" name="shoulder_pan" joint="shoulder_pan" ctrlrange="-1.91986 1.91986"/>
+    <position class="sts3215" name="shoulder_lift" joint="shoulder_lift" ctrlrange="-1.74533 1.74533"/>
+    <position class="sts3215" name="elbow_flex" joint="elbow_flex" ctrlrange="-1.69 1.69"/>
+    <position class="sts3215" name="wrist_flex" joint="wrist_flex" ctrlrange="-1.65806 1.65806"/>
+    <position class="sts3215" name="wrist_roll" joint="wrist_roll" ctrlrange="-2.74385 2.84121"/>
+    <position class="sts3215" name="gripper" joint="gripper" ctrlrange="-1.833 0"/>
+  </actuator>
+</mujoco>
