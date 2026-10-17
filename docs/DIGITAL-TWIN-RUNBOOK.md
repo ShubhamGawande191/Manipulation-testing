@@ -232,6 +232,12 @@ uv run harness reach --backend sim --policy runs/ppo_reach/<name>/reach.onnx --r
 uv run harness reach --backend real --live --max-vel 0.5 ...   # operator present
 ```
 
+- **Real backend safety** (`harness/backend.py` + `hw/follower.py`, shared with teleop):
+  - A **dry run is read-only**: it opens the bus only, with no register writes and no torque change.
+  - **Live** runs turn torque on joint by joint with Goal = Present and P=24 on lift and elbow.
+  - **Close and Ctrl+C park** at the rest pose before releasing torque joint by joint.
+  - **Lesson:** the first version used `SOFollower.connect()`/`disconnect()`. That turned all six
+    torques on at once (even in a dry run) and dropped the arm wherever it was on close.
 - The policy metadata records the scene, the gripper hold and the action scale. The loader refuses
   a mismatch, so a stock-gripper policy can't run on the PincOpen model.
 - **Lesson (target sampling):** sample targets from the **task workspace** (`TARGET_BOX`), not from

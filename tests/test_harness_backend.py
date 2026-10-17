@@ -170,3 +170,41 @@ def test_lerobot_live_sends_degrees_and_close_disconnects(tmp_path):
     assert sent["gripper.pos"] == pytest.approx(0.0, abs=1e-6)  # sim_open -> lerobot 0
     lb.close()
     assert robot.disconnected is True
+
+
+def test_dry_run_connect_is_read_only(monkeypatch):
+    """A dry run must never call SOFollower.connect() (enables all torques at once) and must
+    close without dropping torque."""
+    import robot_manipulator.harness.backend as backend_mod
+
+    calls = []
+
+    class FakeBus:
+        is_calibrated = True
+
+        def connect(self):
+            calls.append("bus.connect")
+
+        def disconnect(self, disable_torque=True):
+            calls.append(f"bus.disconnect(disable_torque={disable_torque})")
+
+    class FakeSOFollower:
+        def __init__(self, cfg):
+            self.bus = FakeBus()
+
+        def connect(self, calibrate=True):  # pragma: no cover - must not be called
+            raise AssertionError("dry run called SOFollower.connect()")
+
+        def get_observation(self):
+            return {f"{j}.pos": 0.0 for j in BODY_JOINTS + ("gripper",)}
+
+    import lerobot.robots.so_follower as so_follower
+
+    monkeypatch.setattr(so_follower, "SOFollower", FakeSOFollower)
+    monkeypatch.setattr(
+        "robot_manipulator.arm.build_follower_config", lambda **kw: None, raising=True
+    )
+    lb = backend_mod.LeRobotBackend("unused", JointMap.from_yaml(REPO_CFG), dry_run=True)
+    lb.read()
+    lb.close()
+    assert calls == ["bus.connect", "bus.disconnect(disable_torque=False)"]

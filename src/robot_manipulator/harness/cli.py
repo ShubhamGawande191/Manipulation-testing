@@ -120,85 +120,90 @@ def run_reach(
             "step; commands are clipped to the cap (use --max-vel for the policy's scale)",
             err=True,
         )
-    for i, target in enumerate(targets):
-        clock = WallClock() if backend == "real" else SimClock()
+    try:
+        for i, target in enumerate(targets):
+            clock = WallClock() if backend == "real" else SimClock()
+            if sim_be is not None:
+                start = np.clip(
+                    home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
+                )
+                sim_be.reset(start)
+                be: Any = sim_be
+            elif backend == "fake":
+                start = np.clip(
+                    home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
+                )
+                be = FakeBackend(q0=start, alpha=0.3, clock=clock)
+            else:
+                be = real_be
+
+            safety = SafetyFilter(lo=lo6, hi=hi6, max_vel=max_vel, clock=clock)
+            home = Skill(
+                "home",
+                GlideTo(home6, max_vel=max_vel, hz=HZ),
+                [JointReached(home6, tol=HOME_TOL), TimeLimit(GLIDE_TIMEOUT_S)],
+                hz=HZ,
+            )
+            reach = Skill(
+                "reach",
+                policy,
+                [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
+                hz=HZ,
+            )
+            t_ep = time.monotonic()
+            results = run_sequence(
+                [(home, {}), (reach, {"target": target})], be, safety, clock=clock, log=traj
+            )
+            wall = time.monotonic() - t_ep
+            reach_res = results[-1] if len(results) == 2 else None
+            success = bool(reach_res and reach_res.status == "success")
+            n_steps = reach_res.n_steps if reach_res else 0
+            final = be.read()
+            final_dist = float(np.linalg.norm(ee_of(final) - target))
+            if backend == "real" and not live:
+                typer.echo(f"dry run, episode {i}: last command {real_be.last_command}", err=True)
+
+            episodes.append(
+                {
+                    "episode": i,
+                    "target_m": target.tolist(),
+                    "success": success,
+                    "home_ok": results[0].status == "success",
+                    "n_steps": n_steps,
+                    "final_dist_m": final_dist,
+                    "time_to_success_s": reach_res.duration_s if success else None,
+                    "reason": reach_res.reason if reach_res else "home_failed",
+                }
+            )
+            records.append(
+                EpisodeRecord(
+                    run_id=f"{run_id}-{i:03d}",
+                    arm_id=arm_id,
+                    policy=policy.name,
+                    executor="harness",
+                    chunk_len=1,
+                    precision="fp32",
+                    policy_latency_ms=float(policy.health().latency_ms),
+                    e2e_latency_ms=1000.0 * wall / max(n_steps, 1),
+                    jitter_ms=0.0,
+                    success=success,
+                    time_to_success_s=reach_res.duration_s if success else None,
+                    task="reach",
+                    backend=backend,
+                    n_steps=n_steps,
+                )
+            )
+            if sim_be is None and backend != "real":
+                be.close()
+
+    except KeyboardInterrupt:
+        # stop between/within episodes; the finally below still parks the real arm
+        typer.echo("interrupted — closing backends (real arm parks before torque off)", err=True)
+    finally:
+        if real_be is not None:
+            real_be.close()
         if sim_be is not None:
-            start = np.clip(
-                home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
-            )
-            sim_be.reset(start)
-            be: Any = sim_be
-        elif backend == "fake":
-            start = np.clip(
-                home6 + np.r_[rng.uniform(-RESET_NOISE, RESET_NOISE, N_ARM), 0.0], lo6, hi6
-            )
-            be = FakeBackend(q0=start, alpha=0.3, clock=clock)
-        else:
-            be = real_be
-
-        safety = SafetyFilter(lo=lo6, hi=hi6, max_vel=max_vel, clock=clock)
-        home = Skill(
-            "home",
-            GlideTo(home6, max_vel=max_vel, hz=HZ),
-            [JointReached(home6, tol=HOME_TOL), TimeLimit(GLIDE_TIMEOUT_S)],
-            hz=HZ,
-        )
-        reach = Skill(
-            "reach",
-            policy,
-            [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
-            hz=HZ,
-        )
-        t_ep = time.monotonic()
-        results = run_sequence(
-            [(home, {}), (reach, {"target": target})], be, safety, clock=clock, log=traj
-        )
-        wall = time.monotonic() - t_ep
-        reach_res = results[-1] if len(results) == 2 else None
-        success = bool(reach_res and reach_res.status == "success")
-        n_steps = reach_res.n_steps if reach_res else 0
-        final = be.read()
-        final_dist = float(np.linalg.norm(ee_of(final) - target))
-        if backend == "real" and not live:
-            typer.echo(f"dry run, episode {i}: last command {real_be.last_command}", err=True)
-
-        episodes.append(
-            {
-                "episode": i,
-                "target_m": target.tolist(),
-                "success": success,
-                "home_ok": results[0].status == "success",
-                "n_steps": n_steps,
-                "final_dist_m": final_dist,
-                "time_to_success_s": reach_res.duration_s if success else None,
-                "reason": reach_res.reason if reach_res else "home_failed",
-            }
-        )
-        records.append(
-            EpisodeRecord(
-                run_id=f"{run_id}-{i:03d}",
-                arm_id=arm_id,
-                policy=policy.name,
-                executor="harness",
-                chunk_len=1,
-                precision="fp32",
-                policy_latency_ms=float(policy.health().latency_ms),
-                e2e_latency_ms=1000.0 * wall / max(n_steps, 1),
-                jitter_ms=0.0,
-                success=success,
-                time_to_success_s=reach_res.duration_s if success else None,
-                task="reach",
-                backend=backend,
-                n_steps=n_steps,
-            )
-        )
-        if sim_be is None and backend != "real":
-            be.close()
-
-    if real_be is not None:
-        real_be.close()
-    if sim_be is not None:
-        sim_be.close()
+            sim_be.close()
 
     write_records(records, run_dir / "episodes.parquet")
     succ = [e for e in episodes if e["success"]]

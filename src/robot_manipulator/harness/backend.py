@@ -205,13 +205,23 @@ class SimBackend:
             self._viewer = None
 
 
-def _connect(port: str, robot_id: str):
+def _connect(port: str, robot_id: str, live: bool):
+    """Open the follower. Dry run: bus only, read-only (no register writes, torque untouched).
+    Live: staged torque enable with Goal = Present and per-joint P gains (hw.follower)."""
     from lerobot.robots.so_follower import SOFollower
 
     from robot_manipulator.arm import build_follower_config
 
+    if live:
+        from robot_manipulator.hw.follower import connect_follower
+
+        robot, _ = connect_follower(port, robot_id, pid={})
+        return robot
     robot = SOFollower(build_follower_config(port=port, robot_id=robot_id, cameras=False))
-    robot.connect(calibrate=False)
+    robot.bus.connect()
+    if not robot.bus.is_calibrated:
+        robot.bus.disconnect(disable_torque=False)
+        raise RuntimeError(f"follower calibration mismatch for id {robot_id!r}")
     return robot
 
 
@@ -242,7 +252,8 @@ class LeRobotBackend:
         self.joint_map = joint_map
         self.dry_run = dry_run
         self.last_command: dict[str, float] | None = None
-        self._robot = robot if robot is not None else _connect(port, robot_id)
+        self._owns_hw = robot is None  # real hardware opened here (vs an injected test double)
+        self._robot = robot if robot is not None else _connect(port, robot_id, live=not dry_run)
         self._last_t: float | None = None
         self._last_q: np.ndarray | None = None
 
@@ -267,6 +278,22 @@ class LeRobotBackend:
         self._robot.send_action(vals)
 
     def close(self) -> None:
-        disconnect = getattr(self._robot, "disconnect", None)
-        if disconnect is not None:
-            disconnect()
+        """Real hardware: live runs park at REST_ARM (gripper left as is) and release torque joint
+        by joint; dry runs just close the port. Never a bare disconnect, which drops the arm."""
+        if not self._owns_hw:
+            disconnect = getattr(self._robot, "disconnect", None)
+            if disconnect is not None:
+                disconnect()
+            return
+        try:
+            if not self.dry_run:
+                from robot_manipulator.hw.follower import (
+                    REST_ARM,
+                    bus_pos,
+                    park_and_release,
+                )
+
+                here = bus_pos(self._robot)
+                park_and_release(self._robot, np.r_[REST_ARM, here[-1]], speed=30.0, hz=50.0)
+        finally:
+            self._robot.bus.disconnect(disable_torque=False)
