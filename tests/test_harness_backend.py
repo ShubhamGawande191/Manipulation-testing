@@ -105,7 +105,7 @@ def test_sim_backend_tracks_constant_target_within_2cm_rad_after_2s():
     from robot_manipulator.harness.backend import SimBackend
 
     sb = SimBackend(hz=50.0)
-    target = np.array([0.2, -1.0, 1.0, 0.3, 0.1, 0.5])
+    target = np.array([0.2, -1.0, 1.0, 0.3, 0.1, -0.5])  # gripper inside the PincOpen range
     for _ in range(100):  # 2 s of control at 50 Hz
         sb.command(target)
     obs = sb.read()

@@ -24,6 +24,7 @@ import typer
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
+
 def _linear(start: float):
     """SB3 schedule: decays linearly from `start` to 0 over training."""
     return lambda progress_remaining: progress_remaining * start
@@ -206,9 +207,7 @@ def main(
     eval_episodes: int = typer.Option(50),
     final_episodes: int = typer.Option(100),
     dummy: bool = typer.Option(False, help="single-process vec env (smoke tests)"),
-    batch_size: int = typer.Option(
-        PPO_KWARGS["batch_size"], help="PPO minibatch size"
-    ),
+    batch_size: int = typer.Option(PPO_KWARGS["batch_size"], help="PPO minibatch size"),
 ) -> None:
     if out is None:
         out = Path("runs") / "ppo_reach" / datetime.now().strftime("%Y%m%d-%H%M%S")

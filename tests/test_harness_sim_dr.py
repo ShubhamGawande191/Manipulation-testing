@@ -11,9 +11,10 @@ from robot_manipulator.harness.policies.glide import GlideTo  # noqa: E402
 from robot_manipulator.harness.runner import run_skill  # noqa: E402
 from robot_manipulator.harness.safety_layer import SafetyFilter  # noqa: E402
 from robot_manipulator.harness.skill import JointReached, Skill, TimeLimit  # noqa: E402
+from robot_manipulator.sim.envs.reach import GRIPPER_HOLD, HOME_ARM  # noqa: E402
 from robot_manipulator.sim.randomize import DRConfig  # noqa: E402
 
-HOME6 = np.array([0.0, -1.57, 1.57, 0.0, 0.0, 1.74533])
+HOME6 = np.r_[HOME_ARM, GRIPPER_HOLD]  # PincOpen fully open (default model)
 
 
 def _flat_dr(**kw) -> DRConfig:

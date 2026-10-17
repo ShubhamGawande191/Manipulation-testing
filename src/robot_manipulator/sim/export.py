@@ -25,7 +25,7 @@ from robot_manipulator.sim.envs.reach import (
     N_ARM,
     OBS_DIM,
 )
-from robot_manipulator.sim.model import JOINTS, MENAGERIE_COMMIT
+from robot_manipulator.sim.model import DEFAULT_SCENE, JOINTS, MENAGERIE_COMMIT
 
 OBS_LAYOUT = [
     *[f"q_{j}" for j in JOINTS[:N_ARM]],
@@ -140,6 +140,7 @@ def export_policy(
         "obs_layout": OBS_LAYOUT,
         "units": "rad",
         "sim_commit": MENAGERIE_COMMIT,
+        "scene": DEFAULT_SCENE,
         "repo_commit": _git_head(),
         "dr": bool(dr),
         "train_steps": int(train_steps),

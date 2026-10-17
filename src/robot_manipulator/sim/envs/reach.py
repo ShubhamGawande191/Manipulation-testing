@@ -57,7 +57,7 @@ JOINT_MARGIN = 0.05  # rad, same as the harness SafetyFilter default
 TARGET_SHRINK = 0.8  # targets are sampled from 80 % of each joint range
 HOME_ARM = np.array([0.0, -1.57, 1.57, 0.0, 0.0])  # matches so101_bridge.HOME, CMD order
 RESET_NOISE = 0.1  # rad, uniform per arm joint
-GRIPPER_HOLD = 1.74533  # rad, sim_open in config/sim2real.yaml
+GRIPPER_HOLD = -1.833  # rad, PincOpen fully open = sim_open in config/sim2real.yaml
 SUCCESS_TOL = 0.02  # m
 FINE_STD = 0.05  # m, width of the tanh "fine reach" reward kernel
 N_ARM = 5

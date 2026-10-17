@@ -29,8 +29,13 @@ MENAGERIE_COMMIT = "3abca2e302625cec9429c49806121ea2855cef81"  # the vendored MJ
 ASSET_DIR = Path(str(resources.files(__package__).joinpath("assets", "so101")))
 
 
-def load_model(scene: str = "scene.xml") -> mujoco.MjModel:
-    """Load the SO101 model. `scene.xml` adds a floor; `so101.xml` is the bare arm."""
+# The real follower carries a PincOpen gripper (2026-10-17); `scene.xml` is the stock-gripper arm.
+DEFAULT_SCENE = "scene_pinc.xml"
+
+
+def load_model(scene: str = DEFAULT_SCENE) -> mujoco.MjModel:
+    """Load the SO101 model. Default: PincOpen variant on the table (`scene_pinc.xml`).
+    `scene.xml` is the stock Menagerie arm with a floor; `so101.xml` the bare stock arm."""
     return mujoco.MjModel.from_xml_path(str(ASSET_DIR / scene))
 
 

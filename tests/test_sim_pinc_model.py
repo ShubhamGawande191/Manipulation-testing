@@ -104,3 +104,16 @@ def test_camera_bracket_points_away_from_base_at_rest(model):
     d.qpos[adr[:5]] = np.deg2rad([-3.3, -108.0, 96.6, 87.9, -84.8])
     mujoco.mj_forward(model, d)
     assert d.geom("camera_lens").xpos[0] > d.body("pinc_base").xpos[0] + 0.05
+
+
+def test_training_gripper_hold_matches_joint_map_and_model():
+    # deploy sends GRIPPER_HOLD through config/sim2real.yaml; training must use the same value
+    from robot_manipulator.harness.twin import DEFAULT_MAP
+    from robot_manipulator.harness.units import JointMap
+    from robot_manipulator.sim.envs.reach import GRIPPER_HOLD
+    from robot_manipulator.sim.model import DEFAULT_SCENE, joint_ranges
+
+    assert DEFAULT_SCENE == "scene_pinc.xml"
+    assert GRIPPER_HOLD == pytest.approx(JointMap.from_yaml(DEFAULT_MAP).gripper.sim_open)
+    lo, hi = joint_ranges(load_model(), JOINTS)
+    assert lo[5] <= GRIPPER_HOLD <= hi[5]

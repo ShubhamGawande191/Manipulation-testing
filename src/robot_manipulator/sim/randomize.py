@@ -23,7 +23,8 @@ class DRConfig:
     frictionloss: tuple[float, float] = (0.5, 2.0)
     armature: tuple[float, float] = (0.8, 1.2)
     link_mass: tuple[float, float] = (0.9, 1.1)  # per body, mass and inertia together
-    gripper_payload_kg: tuple[float, float] = (0.0, 0.25)  # extra mass on body `gripper` (H1)
+    # extra mass on body `gripper`: model has 0.212 kg past the wrist, user estimate 0.2-0.3 kg
+    gripper_payload_kg: tuple[float, float] = (0.0, 0.09)
     action_delay_steps: tuple[int, ...] = (0, 1, 2)
     obs_noise_q: float = 0.005  # rad
     obs_noise_dq: float = 0.05  # rad/s

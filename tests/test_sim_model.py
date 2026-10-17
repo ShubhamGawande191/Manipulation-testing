@@ -32,8 +32,9 @@ def test_actuators_and_joints_follow_cmd_order(model):
     np.testing.assert_array_equal(actuator_ids(model), np.arange(6))
 
 
-def test_joint_limits_match_menagerie_numbers(model):
-    lo, hi = joint_ranges(model)
+def test_joint_limits_match_menagerie_numbers():
+    # the stock Menagerie arm; the default PincOpen variant has a different gripper joint
+    lo, hi = joint_ranges(load_model("scene.xml"))
     np.testing.assert_allclose(
         lo, [-1.91986, -1.74533, -1.69, -1.65806, -2.74385, -0.17453], atol=1e-4
     )
