@@ -65,6 +65,7 @@ def run_reach(
         N_ARM,
         RESET_NOISE,
         SUCCESS_TOL,
+        TARGET_BOX,
         target_box,
     )
     from robot_manipulator.sim.kinematics import FK
@@ -82,7 +83,8 @@ def run_reach(
     home6 = np.r_[HOME_ARM, GRIPPER_HOLD]
     rng = np.random.default_rng(seed)
     if targets is None:
-        _, targets = fk.sample_reachable(rng, n_episodes, *target_box(lo6, hi6))
+        # same distribution as training: joint-space samples whose EE lies in TARGET_BOX
+        _, targets = fk.sample_reachable(rng, n_episodes, *target_box(lo6, hi6), box=TARGET_BOX)
     targets = np.asarray(targets, dtype=np.float64).reshape(-1, 3)
 
     run_dir = (

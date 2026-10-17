@@ -130,3 +130,20 @@ Smaller points: a full-turn joint's zero is at presented 2047.5, so the plan's 2
 6. Re-test teleop alignment: the `teleop` tool, then the frame table from `calib-check`.
 
 The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouched.
+
+## 2026-10-17 — PincOpen model, reach acceptance met
+
+- Model: `scene_pinc.xml` is now the default (PincOpen gripper, table 2.75 cm below the base).
+- The first PincOpen run (`runs/ppo_reach/pinc_3M`) scored 76 % with DR and 78 % without, on 100
+  fresh episodes. In a 200-episode failure analysis, the failures were targets **behind/above the base**
+  (failed targets averaged x −0.04 m and z 0.40 m), coming from joint-space sampling with the arm folded
+  over itself. Contacts were involved in only 2 % of failures.
+- Fix `0d240df`: targets are rejection-sampled inside `TARGET_BOX` (x 0.10–0.40, y ±0.25, z 0.02–0.30 m,
+  base frame), i.e. the table workspace in front of the robot.
+- `runs/ppo_reach/pinc_box_3M` (3 M steps, 17 min): **95 % with DR / 100 % without** on 100 fresh episodes
+  (mean final distance 0.9 / 0.4 cm). Training eval was 98–100 % over the last 0.3 M steps.
+  → **T8 acceptance met.**
+- Harness (`uv run harness reach --backend sim --policy runs/ppo_reach/pinc_box_3M/reach.onnx
+  --random 100 --dr --seed 7`): **99 % success**, mean time to success 1.0 s (`runs/harness/20261017-232711`).
+  → **T10 acceptance met.** The first harness run scored 78 % because the CLI sampled its own targets
+  without `TARGET_BOX`. It now uses the same distribution as training.

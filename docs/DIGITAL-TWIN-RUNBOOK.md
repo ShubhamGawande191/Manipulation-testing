@@ -234,6 +234,10 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
 
 - The policy metadata records the scene, the gripper hold and the action scale. The loader refuses
   a mismatch, so a stock-gripper policy can't run on the PincOpen model.
+- **Lesson (target sampling):** sample targets from the **task workspace** (`TARGET_BOX`), not from
+  joint space alone. Otherwise training wastes effort on targets with the arm folded over itself.
+- **Lesson (one sampler):** the harness and the trainer must share one target sampler. When they
+  differed, harness success dropped from 99 % to 78 %.
 
 ---
 
@@ -264,4 +268,4 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
 | 7 Extrinsics | ⏳ needs board square size + touch session | |
 | 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
 | 9 Actuator fit | ⏳ | |
-| 10 Policy | 🟡 reach retraining on the PincOpen model | `runs/ppo_reach/pinc_3M` |
+| 10 Policy | ✅ sim: reach 95 % DR / 100 % no-DR; harness 99 % | `runs/ppo_reach/pinc_box_3M`; real slow test pending |
