@@ -55,6 +55,7 @@ calibrate = "robot_manipulator.scripts.calibrate:app"
 teleoperate = "robot_manipulator.scripts.teleoperate:app"
 sim-train-reach = "robot_manipulator.sim.train_reach:app"
 harness = "robot_manipulator.harness.cli:app"
+teleop = "robot_manipulator.tasks.teleop_staged:app"
 
 [build-system]
 requires = ["hatchling"]
