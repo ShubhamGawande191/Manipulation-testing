@@ -256,12 +256,24 @@ class LeRobotBackend:
         self._robot = robot if robot is not None else _connect(port, robot_id, live=not dry_run)
         self._last_t: float | None = None
         self._last_q: np.ndarray | None = None
+        self.telemetry = None
+        if self._owns_hw:
+            from robot_manipulator.hw.telemetry import TelemetryLogger
+
+            self.telemetry = TelemetryLogger(
+                "harness_live" if not dry_run else "harness_dry",
+                robot_id,
+                joint_map=joint_map,
+                calibration_path=getattr(self._robot, "calibration_fpath", None),
+            )
 
     def read(self) -> Obs:
         import time
 
         obs = self._robot.get_observation()
         q = self.joint_map.lerobot_to_sim(obs)
+        if self.telemetry is not None:
+            self.telemetry.record(obs, self.last_command, bus=self._robot.bus)
         t = time.monotonic()
         dq = np.zeros(N)
         if self._last_t is not None and t > self._last_t:
@@ -297,3 +309,7 @@ class LeRobotBackend:
                 park_and_release(self._robot, np.r_[REST_ARM, here[-1]], speed=30.0, hz=50.0)
         finally:
             self._robot.bus.disconnect(disable_torque=False)
+            if self.telemetry is not None:
+                path = self.telemetry.save()
+                if path is not None:
+                    log.info("telemetry -> %s", path)

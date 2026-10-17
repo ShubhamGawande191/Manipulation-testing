@@ -234,8 +234,19 @@ def main(
         )
     robot = None
     log = TrackLog()
+    telemetry = None
     try:
         robot, start = _connect_follower(follower_port, follower_id, overrides)
+        from robot_manipulator.harness.units import JointMap
+        from robot_manipulator.hw.telemetry import REPO as _REPO
+        from robot_manipulator.hw.telemetry import TelemetryLogger
+
+        telemetry = TelemetryLogger(
+            "teleop",
+            follower_id,
+            joint_map=JointMap.from_yaml(_REPO / "config" / "sim2real.yaml"),
+            calibration_path=getattr(robot, "calibration_fpath", None),
+        )
         goal = _leader_pos(leader)
         console.print("start (follower):", np.round(start, 1))
         console.print("leader pose     :", np.round(goal, 1))
@@ -272,12 +283,17 @@ def main(
                 raw = robot.bus.sync_read("Present_Load", normalize=False)
                 load = np.array([raw[j] for j in JOINTS], dtype=np.float64)
             log.add(time.monotonic() - t0, cmd, pos, load)
+            telemetry.record(pos, cmd, bus=robot.bus)
             tick += 1
             next_t += dt
             time.sleep(max(0.0, next_t - time.monotonic()))
     except KeyboardInterrupt:
         console.print("\n[yellow]stopping[/]")
     finally:
+        if telemetry is not None:
+            tpath = telemetry.save()
+            if tpath is not None:
+                console.print(f"[dim]telemetry → {tpath}[/]")
         if log.t:  # save before parking so the data survives anything that happens next
             path = log.save(RUNS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.parquet")
             console.print(f"[dim]trace → {path}[/]")
