@@ -1,0 +1,8 @@
+# The printed ChArUco board (identified 2026-10-17 from calibration_images/: 5x7 squares,
+# DICT_7X7_50, marker ids 0-16). Square/marker sizes only matter for extrinsics (metric scale),
+# not for lens intrinsics. TODO-measure: square_length_m with a ruler (40 mm assumed).
+squares_x: 5
+squares_y: 7
+dictionary: DICT_7X7_50
+square_length_m: 0.040
+marker_length_m: 0.020
