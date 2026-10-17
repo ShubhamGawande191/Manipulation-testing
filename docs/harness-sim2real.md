@@ -87,3 +87,46 @@ Caveats:
 ### B3 — Hardware tickets H1–H4 (user, not started)
 
 Out of scope for this run by design. `calibrated: false` in `config/sim2real.yaml` blocks live LeRobot runs.
+
+## Calibration (diagnosis, checker, auto-calibration core)
+
+Work order: [HAIKU-CALIB-PLAN.md](HAIKU-CALIB-PLAN.md). Step 0 is `36cc2b8` (teleop tool and research notes). C1 is `a9f7899`, and C2 is `2f4429c`. No hardware was used. The cache files were only read, never written, and the live LeRobot bus is a stub that refuses to construct.
+
+### Diagnosis (`uv run calib-check`, read-only, default cache paths)
+
+Fleet stats: `config/calibration_stats_so101.json` (NVIDIA workshop, Apache-2.0, n=15 follower arms). The gripper is skipped because the PincOpen stats do not apply.
+
+| Joint | Follower range (fleet) | σ-dev | Follower homing | Leader range | Leader σ-dev | Leader homing |
+|---|---|---|---|---|---|---|
+| shoulder_pan | 1905 (2725±32) | **−25.7** | −1964 | 2712 | −0.4 | −381 |
+| shoulder_lift | 2476 (2350±77) | +1.6 | −1512 | 2615 | **+3.4** | −1026 |
+| elbow_flex | 2128 (2222±9) | **−10.2** | −1636 | 2208 | −1.5 | 1947 |
+| wrist_flex | 2286 (2329±17) | **−2.5** | −1707 | 2357 | +1.6 | −460 |
+| wrist_roll | 4095 (full turn) | +0.6 | −2 | 4095 (full turn) | +0.6 | −1253 |
+
+Zero location of follower minus leader, in degrees (indicative only): pan −126.6, shoulder_lift −38.1, elbow_flex +44.9, wrist_flex −109.3, wrist_roll +110.0.
+
+What the plan predicted: follower pan (sweep incomplete), wrist_roll homing (−2 against −1253, about 110°), and elbow (2128 against 2222 ± 9). All three show up. Two findings were not in the plan. Follower `wrist_flex` is −2.5 σ, and leader `shoulder_lift` is +3.4 σ. The leader is compared with a follower-only fleet, so that row is a hint.
+
+### What C1 and C2 provide
+
+- **C1 (`calib-check`):** loads the cache files read-only and prints the table above. Fleet outliers (range beyond `n_std` σ) and homing offsets beyond ±2048 set the exit code, which is 1 on the real files. Frame offsets are printed but do not set the exit code, since the files cannot see the physical pose.
+- **C2 (`calib/autocal.py`, simulation only):** `find_stop` creeps to a mechanical stop, unwrapping raw across 4095 → 0 and stalling on position error or on load. `calibrate_joint` homes the stop midpoint to 2047 using LeRobot's half-turn rule (`Homing = raw − 2047`). `manual_zero` homes a held pose to 2047 for wrist_roll. `fleet_profile` builds a default profile from the stats. Tests check the convention against copies of LeRobot's `_get_half_turn_homings` and `_normalize` (DEGREES).
+
+### Two plan issues to decide with the user
+
+1. **`zero_offsets_deg` cannot be implemented through homing.** LeRobot's DEGREES zero is the midpoint of the calibrated range. Homing moves the range and its midpoint together, so a homing-only shift does nothing to the degree zero. C2 refuses a nonzero offset with a clear error instead of faking it. A real shift needs an asymmetric range, which conflicts with "range = stops", so the mechanism is a decision for the user.
+2. **Frame offsets are only indicative.** Each arm's zero sits at its own stop midpoint. The large follower-minus-leader values on lift, elbow and wrist_flex may come from differing stop geometry or from encoder mounting, and the files cannot tell which. Physical alignment is the ground truth.
+
+Smaller points: a full-turn joint's zero is at presented 2047.5, so the plan's 2047 is half a count (0.04°) off. The stop estimate has about ±2 counts of error (0.2°) from read noise, and a live procedure should average several reads.
+
+### Live steps left (Opus and the user, not done here)
+
+1. `LeRobotJointBus` adapter over `FeetechMotorsBus`, reviewed with the user first (currently a stub that raises).
+2. Safe joint order and a folded start pose, using `bench-check` first.
+3. Capture a reference-arm profile (stops and `manual_zero` poses) on a known-good arm.
+4. Re-calibrate the follower, starting with pan, elbow, and wrist_flex, with torque limits.
+5. Check the leader against the fleet (shoulder_lift is out of range).
+6. Re-test teleop alignment: the `teleop` tool, then the frame table from `calib-check`.
+
+The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouched.
