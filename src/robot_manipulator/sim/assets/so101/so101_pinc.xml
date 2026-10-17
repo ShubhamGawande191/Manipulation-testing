@@ -68,27 +68,27 @@
     <mesh maxhullvert="64" file="wrist_roll_follower_so101_gripper_part0_v1.stl"/>
     <mesh maxhullvert="64" file="moving_jaw_so101_gripper_part0_v1.stl"/>
     <mesh maxhullvert="64" file="moving_jaw_so101_gripper_part1_v1.stl"/>
-    <material name="base_motor_holder_so101_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="base_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="base_motor_holder_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="base_so101_v2_material" rgba="0.12 0.2 0.38 1"/>
     <material name="sts3215_03a_v1_material" rgba="0.1 0.1 0.1 1"/>
-    <material name="waveshare_mounting_plate_so101_v2_material" rgba="1 0.82 0.12 1"/>
-    <material name="motor_holder_so101_base_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="rotation_pitch_so101_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="upper_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="under_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="motor_holder_so101_wrist_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="waveshare_mounting_plate_so101_v2_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="motor_holder_so101_base_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="rotation_pitch_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="upper_arm_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="under_arm_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="motor_holder_so101_wrist_v1_material" rgba="0.12 0.2 0.38 1"/>
     <material name="sts3215_03a_no_horn_v1_material" rgba="0.1 0.1 0.1 1.0"/>
-    <material name="wrist_roll_pitch_so101_v2_material" rgba="1 0.82 0.12 1"/>
-    <material name="wrist_roll_follower_so101_v1_material" rgba="1 0.82 0.12 1"/>
-    <material name="moving_jaw_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="wrist_roll_pitch_so101_v2_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="wrist_roll_follower_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
+    <material name="moving_jaw_so101_v1_material" rgba="0.12 0.2 0.38 1"/>
     <!-- PincOpen gripper (CNURobotics/pinc_open_driver simple meshes, mm). -->
     <mesh name="pinc_palm" file="gripper_hand_w_motor_simple.stl" scale="0.001 0.001 0.001"/>
     <mesh name="pinc_right_arm" file="gripper_right_arm_simple.stl" scale="0.001 0.001 0.001"/>
     <mesh name="pinc_left_arm" file="gripper_left_arm_simple.stl" scale="0.001 0.001 0.001"/>
     <mesh name="pinc_right_finger" file="gripper_right_finger_simple.stl" scale="0.001 0.001 0.001"/>
     <mesh name="pinc_left_finger" file="gripper_left_finger_simple.stl" scale="0.001 0.001 0.001"/>
-    <material name="pinc_material" rgba="0.2 0.35 0.25 1"/>
-    <material name="pinc_link_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="pinc_material" rgba="0.36 0.45 0.32 1"/>
+    <material name="pinc_link_material" rgba="0.08 0.08 0.08 1"/>
   </asset>
 
   <worldbody>
@@ -184,8 +184,9 @@
                   rgba="0.45 0.55 0.4 1"/>
                 <!-- PincOpen palm (Pollen Robotics, CC BY-SA 4.0; meshes + kinematics from CNURobotics/
                      pinc_open_driver, Apache-2.0). Frame: x palm->fingertips (= -z here), y jaw opening,
-                     z finger hinge axis. Fingers centred on the wrist_roll axis. -->
-                <body name="pinc_base" pos="0 -0.005 -0.005" quat="-0.5 -0.5 -0.5 0.5">
+                     z finger hinge axis; +z (motor side) faces away from the arm at the folded rest pose
+                     (user: the camera sits right above the motor). Fingers centred on the wrist_roll axis. -->
+                <body name="pinc_base" pos="0 0.005 -0.005" quat="0.5 -0.5 0.5 0.5">
                   <inertial pos="0.029 0 0.01" mass="0.13" diaginertia="1.30271e-04 6.09370e-05 1.47333e-04"/>
                   <geom type="mesh" class="visual" mesh="pinc_palm" material="pinc_material"/>
                   <geom name="pinc_palm_box" type="box" class="collision" pos="0.029 0 0.0033"
@@ -194,22 +195,21 @@
                     size="0.024 0.0125 0.0125"/>
                   <!-- Frame gripperframe: between the fingertips (EE site used by FK / reach) -->
                   <site group="3" name="gripperframe" pos="0.118 0 -0.005"/>
-                  <!-- Wrist camera: small board camera on a printed L-bracket (user photos 2026-10-17).
-                       Foot on the palm face (-z_p), strut rising back toward the wrist, horizontal
-                       plate with the lens looking along the fingers. Dimensions estimated from photos;
-                       TODO-measure. Validated against the observed wrist_flex stall (so101_limits.yaml). -->
+                  <!-- Wrist camera: small board camera on a printed L-bracket mounted right above the
+                       gripper motor (+z_p side; user photos/notes 2026-10-17). Strut rises back toward the
+                       wrist, horizontal plate, lens looking along the fingers tilted ~30 deg toward them.
+                       Dimensions estimated from photos; TODO-measure. -->
                   <body name="camera_mount" pos="0 0 0">
-                    <inertial pos="-0.015 0 -0.06" mass="0.03" diaginertia="2.5e-05 2.0e-05 1.0e-05"/>
-                    <geom name="camera_foot" type="box" class="collision" group="1" pos="0.02 0 -0.019"
-                      size="0.015 0.012 0.006" rgba="0.45 0.55 0.4 1"/>
-                    <geom name="camera_strut" type="capsule" class="collision" group="1" fromto="0.01 0 -0.025 -0.035 0 -0.065"
-                      size="0.005" rgba="0.45 0.55 0.4 1"/>
-                    <geom name="camera_box" type="box" class="collision" group="1" pos="-0.04 0 -0.085"
-                      size="0.0025 0.015 0.025" rgba="0.45 0.55 0.4 1"/>
-                    <geom name="camera_lens" type="cylinder" class="collision" group="1" pos="-0.03 0 -0.09"
-                      quat="0.7071068 0 0.7071068 0" size="0.007 0.008" rgba="0.1 0.1 0.1 1"/>
-                    <!-- looks along +x_p, tilted ~30 deg toward the fingers -->
-                    <camera name="wrist_cam" mode="fixed" pos="-0.022 0 -0.09" xyaxes="0 1 0 0.5 0 -0.866" fovy="61"/>
+                    <inertial pos="-0.015 0 0.08" mass="0.03" diaginertia="2.5e-05 2.0e-05 1.0e-05"/>
+                    <geom name="camera_foot" type="box" class="collision" group="1" pos="0.02 0 0.0485"
+                      size="0.015 0.012 0.006" material="pinc_material"/>
+                    <geom name="camera_strut" type="capsule" class="collision" group="1"
+                      fromto="0.01 0 0.055 -0.035 0 0.095" size="0.005" material="pinc_material"/>
+                    <geom name="camera_box" type="box" class="collision" group="1" pos="-0.04 0 0.115"
+                      size="0.0025 0.015 0.025" material="pinc_material"/>
+                    <geom name="camera_lens" type="cylinder" class="collision" group="1" pos="-0.03 0 0.12"
+                      quat="0.7071068 0 0.7071068 0" size="0.007 0.008" material="pinc_link_material"/>
+                    <camera name="wrist_cam" mode="fixed" pos="-0.022 0 0.12" xyaxes="0 -1 0 0.5 0 0.866" fovy="61"/>
                   </body>
                   <!-- Driven joint = servo shaft (coupler). 0 = closed, -1.833 = open (105 deg servo
                        travel, steps 3200 -> 2005). Arms/fingers follow via equality constraints. -->

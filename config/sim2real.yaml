@@ -20,6 +20,6 @@ joints:
 # sim_closed. Values outside the range are clipped.
 gripper:
   lerobot_open: 100.0      # LeRobot convention 0 = closed, 100 = open (follower gripper drive_mode 1)
-  lerobot_closed: 0.0
+  lerobot_closed: 7.0      # fingers touch at ~6.8 (calibrated endpoint 3200 steps includes preload)
   sim_open: -1.833         # rad, PincOpen coupler joint in sim/assets/so101/so101_pinc.xml (105 deg servo travel)
   sim_closed: 0.0          # rad, fingers touching
