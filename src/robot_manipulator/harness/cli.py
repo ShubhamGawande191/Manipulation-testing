@@ -45,6 +45,7 @@ def run_reach(
     port: str = "/dev/so101_follower",
     joint_map_path: Path = Path("config/sim2real.yaml"),
     out: Path | None = None,
+    settle: bool = False,
 ) -> dict[str, Any]:
     """Run `n_episodes` home+reach episodes and write episodes.parquet, summary.json and traj/."""
     from robot_manipulator.core.episode_log import EpisodeRecord, write_records
@@ -155,7 +156,10 @@ def run_reach(
             reach = Skill(
                 "reach",
                 policy,
-                [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
+                # settle: no early stop, run the full episode and judge the final pose (accuracy)
+                [TimeLimit(EP_SECONDS)]
+                if settle
+                else [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
                 hz=HZ,
             )
             t_ep = time.monotonic()
@@ -164,10 +168,13 @@ def run_reach(
             )
             wall = time.monotonic() - t_ep
             reach_res = results[-1] if len(results) == 2 else None
-            success = bool(reach_res and reach_res.status == "success")
             n_steps = reach_res.n_steps if reach_res else 0
             final = be.read()
             final_dist = float(np.linalg.norm(ee_of(final) - target))
+            if settle:
+                success = bool(reach_res is not None and final_dist < SUCCESS_TOL)
+            else:
+                success = bool(reach_res and reach_res.status == "success")
             if backend == "real" and not live:
                 typer.echo(f"dry run, episode {i}: last command {real_be.last_command}", err=True)
 
@@ -179,7 +186,7 @@ def run_reach(
                     "home_ok": results[0].status == "success",
                     "n_steps": n_steps,
                     "final_dist_m": final_dist,
-                    "time_to_success_s": reach_res.duration_s if success else None,
+                    "time_to_success_s": (reach_res.duration_s if success and not settle else None),
                     "reason": reach_res.reason if reach_res else "home_failed",
                 }
             )
@@ -224,8 +231,17 @@ def run_reach(
         "success_rate": len(succ) / len(episodes) if episodes else 0.0,
         "mean_final_dist_m": float(np.mean([e["final_dist_m"] for e in episodes])),
         "mean_time_to_success_s": (
-            float(np.mean([e["time_to_success_s"] for e in succ])) if succ else None
+            float(np.mean(times))
+            if (
+                times := [
+                    e["time_to_success_s"] for e in succ if e["time_to_success_s"] is not None
+                ]
+            )
+            else None
         ),
+        "median_final_dist_m": float(np.median([e["final_dist_m"] for e in episodes])),
+        "p90_final_dist_m": float(np.percentile([e["final_dist_m"] for e in episodes], 90)),
+        "settle": bool(settle),
         "out": str(run_dir),
         "episodes": episodes,
     }
@@ -263,6 +279,9 @@ def reach_cmd(
     port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
     joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
     out: Path | None = typer.Option(None, help="output dir (default runs/harness/<ts>)"),
+    settle: bool = typer.Option(
+        False, "--settle", help="run the full episode; success/accuracy from the final pose"
+    ),
     stow_leader: bool = typer.Option(
         True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
     ),
@@ -290,13 +309,26 @@ def reach_cmd(
             port,
             joint_map,
             out,
+            settle,
         )
     brief = {k: v for k, v in summary.items() if k != "episodes"}
     typer.echo(json.dumps(brief, indent=2))
 
 
 def _run_reach_cmd(
-    backend, policy, targets, n_episodes, seed, dr, viewer, live, max_vel, port, joint_map, out
+    backend,
+    policy,
+    targets,
+    n_episodes,
+    seed,
+    dr,
+    viewer,
+    live,
+    max_vel,
+    port,
+    joint_map,
+    out,
+    settle=False,
 ):
     return run_reach(
         backend=backend,
@@ -311,6 +343,7 @@ def _run_reach_cmd(
         port=port,
         joint_map_path=joint_map,
         out=out,
+        settle=settle,
     )
 
 

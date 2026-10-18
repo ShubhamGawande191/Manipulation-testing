@@ -223,3 +223,14 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   1.9 mrad with kp ×0.61 and friction ×0.25. kp, friction and armature trade off; delay and damping
   are identified. The fitter now uses log-scales, `diff_step=0.05` and 3 starts (the default step
   stalled in a delay-mimicking minimum). **Trust held-out prediction, not individual parameters.**
+- **Fitted-model policy** `runs/ppo_reach/pinc_fit_3M` (`--actuator-fit`): env 98 % with DR / 100 % without.
+  - Cross-eval (100 eps, success / mean final distance):
+    - original policy: nominal twin 99 % / 0.6 cm, fitted twin 99 % / 0.5 cm, fitted+DR 95 %;
+    - fitted policy: nominal 100 % / 0.8 cm, **nominal+DR 69 %**, fitted 100 % / **0.3 cm**, fitted+DR 98 %.
+    It is more accurate on the fitted twin but narrower.
+  - Real, same 20 targets, leader stowed (`runs/harness/20261018-141204`): **20/20**, mean 2.05 s
+    against the original's 2.07 s. Indistinguishable, because the 2 cm early stop and the 0.5 rad/s
+    cap saturate the test.
+  - Added `harness reach --settle` (no early stop; judge the final pose, report median/p90 final
+    distance). Nominal sim at 1.0 rad/s: original median 0.39 cm, fitted 0.70 cm. The real
+    settle run decides which twin matches the arm.
