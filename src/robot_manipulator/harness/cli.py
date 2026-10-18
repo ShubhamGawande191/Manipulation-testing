@@ -238,6 +238,17 @@ def _root() -> None:
     """Deployment harness. Subcommands: `reach`."""
 
 
+def leader_clear(backend: str, live: bool, stow_leader: bool):
+    """Context manager: stow the leader for real live runs (no-op otherwise)."""
+    from contextlib import nullcontext
+
+    if backend == "real" and live and stow_leader:
+        from robot_manipulator.hw.leader import LeaderStow
+
+        return LeaderStow.from_config()
+    return nullcontext()
+
+
 @app.command("reach")
 def reach_cmd(
     backend: str = typer.Option("sim", help="sim | fake | real"),
@@ -252,6 +263,9 @@ def reach_cmd(
     port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
     joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
     out: Path | None = typer.Option(None, help="output dir (default runs/harness/<ts>)"),
+    stow_leader: bool = typer.Option(
+        True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
+    ),
 ) -> None:
     targets = None
     n_episodes = 1
@@ -262,7 +276,29 @@ def reach_cmd(
         targets = np.array([parts])
     elif random > 0:
         n_episodes = random
-    summary = run_reach(
+    with leader_clear(backend, live, stow_leader):
+        summary = _run_reach_cmd(
+            backend,
+            policy,
+            targets,
+            n_episodes,
+            seed,
+            dr,
+            viewer,
+            live,
+            max_vel,
+            port,
+            joint_map,
+            out,
+        )
+    brief = {k: v for k, v in summary.items() if k != "episodes"}
+    typer.echo(json.dumps(brief, indent=2))
+
+
+def _run_reach_cmd(
+    backend, policy, targets, n_episodes, seed, dr, viewer, live, max_vel, port, joint_map, out
+):
+    return run_reach(
         backend=backend,
         policy_path=policy,
         targets=targets,
@@ -276,8 +312,6 @@ def reach_cmd(
         joint_map_path=joint_map,
         out=out,
     )
-    brief = {k: v for k, v in summary.items() if k != "episodes"}
-    typer.echo(json.dumps(brief, indent=2))
 
 
 @app.command("survey")
@@ -290,22 +324,26 @@ def survey_cmd(
     seed: int = typer.Option(0),
     port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
     joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
+    stow_leader: bool = typer.Option(
+        True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
+    ),
 ) -> None:
     """Visit spread-out workspace poses and hold still (telemetry for the workspace atlas)."""
     import json
 
     from robot_manipulator.harness.survey import run_survey
 
-    summary = run_survey(
-        backend=backend,
-        n=n,
-        hold_s=hold,
-        max_vel=max_vel,
-        live=live,
-        seed=seed,
-        port=port,
-        joint_map_path=joint_map,
-    )
+    with leader_clear(backend, live, stow_leader):
+        summary = run_survey(
+            backend=backend,
+            n=n,
+            hold_s=hold,
+            max_vel=max_vel,
+            live=live,
+            seed=seed,
+            port=port,
+            joint_map_path=joint_map,
+        )
     short = {k: v for k, v in summary.items() if k != "results"}
     typer.echo(json.dumps(short, indent=2))
 

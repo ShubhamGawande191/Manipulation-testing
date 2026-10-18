@@ -60,8 +60,18 @@ def run(
     max_vel: float = typer.Option(1.0, help="rad/s cap per joint (same for sim and real)"),
     port: str = typer.Option("/dev/so101_follower"),
     joint_map: Path = typer.Option(Path("config/sim2real.yaml")),
+    stow_leader: bool = typer.Option(
+        True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
+    ),
 ) -> None:
     """Replay motions and save one trace per motion under runs/gap/<ts>_<backend>/."""
+    from robot_manipulator.harness.cli import leader_clear
+
+    with leader_clear(backend, live, stow_leader):
+        _run(backend, motion, live, max_vel, port, joint_map)
+
+
+def _run(backend: str, motion: str, live: bool, max_vel: float, port: str, joint_map: Path) -> None:
     from robot_manipulator.exec.scheduler import SimClock, WallClock
     from robot_manipulator.harness.backend import LeRobotBackend, SimBackend
     from robot_manipulator.harness.policies.glide import GlideTo
