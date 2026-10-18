@@ -280,5 +280,35 @@ def reach_cmd(
     typer.echo(json.dumps(brief, indent=2))
 
 
+@app.command("survey")
+def survey_cmd(
+    backend: str = typer.Option("sim", help="sim | real"),
+    n: int = typer.Option(20, help="number of poses to visit"),
+    hold: float = typer.Option(1.5, help="seconds to hold still at each pose"),
+    max_vel: float = typer.Option(0.5, help="rad/s cap per joint"),
+    live: bool = typer.Option(False, "--live/--dry-run", help="real: send commands to the arm"),
+    seed: int = typer.Option(0),
+    port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
+    joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
+) -> None:
+    """Visit spread-out workspace poses and hold still (telemetry for the workspace atlas)."""
+    import json
+
+    from robot_manipulator.harness.survey import run_survey
+
+    summary = run_survey(
+        backend=backend,
+        n=n,
+        hold_s=hold,
+        max_vel=max_vel,
+        live=live,
+        seed=seed,
+        port=port,
+        joint_map_path=joint_map,
+    )
+    short = {k: v for k, v in summary.items() if k != "results"}
+    typer.echo(json.dumps(short, indent=2))
+
+
 if __name__ == "__main__":
     app()

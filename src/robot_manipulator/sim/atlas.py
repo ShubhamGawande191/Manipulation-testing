@@ -243,5 +243,29 @@ def query_cmd(x: float, y: float, z: float, down: bool = False) -> None:
     typer.echo("not reached in the sample" if r is None else r)
 
 
+@app.command()
+def real() -> None:
+    """Aggregate real telemetry into runs/atlas/real.parquet (+ load calibration vs the twin)."""
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from robot_manipulator.sim.atlas_real import build_real
+
+    rows, calib, paths = build_real()
+    if not rows:
+        typer.echo("no telemetry in runs/telemetry yet")
+        return
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    keys = sorted({k for r in rows for k in r})
+    pq.write_table(pa.table({k: [r.get(k) for r in rows] for k in keys}), OUT_DIR / "real.parquet")
+    (OUT_DIR / "real_calibration.json").write_text(json.dumps(calib, indent=2) + "\n")
+    typer.echo(f"{len(paths)} telemetry files, {len(rows)} voxels -> {OUT_DIR / 'real.parquet'}")
+    typer.echo("measured servo load vs twin gravity load (measured ≈ gain x predicted):")
+    for j, v in calib.items():
+        typer.echo(f"  {j:14} {v}")
+
+
 if __name__ == "__main__":
     app()
