@@ -147,3 +147,18 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   --random 100 --dr --seed 7`): **99 % success**, mean time to success 1.0 s (`runs/harness/20261017-232711`).
   → **T10 acceptance met.** The first harness run scored 78 % because the CLI sampled its own targets
   without `TARGET_BOX`. It now uses the same distribution as training.
+
+## 2026-10-18 — first real zero-shot reach
+
+- First live attempt: HOME failed 5/5. The arm was within 2°, but HOME's gripper target sat on the
+  joint limit and the SafetyFilter margin made it unreachable within HOME_TOL. Fixed in `27657af`.
+- `uv run harness reach --backend real --policy runs/ppo_reach/pinc_box_3M/reach.onnx --random 5 --live
+  --max-vel 0.5`: **4/5 success** (FK on measured joints, 2 cm tolerance), 0.8–2.0 s to reach.
+  Run: `runs/harness/20261018-120142`.
+- The miss was the far-right, low target (0.261, −0.225, 0.089). The policy's running command
+  (trained uncapped at 1 rad/s) ran ahead of the 0.5 rad/s cap. The arm overshot, and FK put the tip
+  0.7 cm below the table at the end. Fixed in `a765f99`: the policy integrates at the deploy cap, and
+  training randomizes the cap over 0.5–1.0 rad/s.
+- Telemetry (`runs/telemetry/20261018-120145_harness_live.*`, the first real atlas data): peak |load|
+  32 % (elbow), p95 ≤ 27 %. Temperatures were steady at 21–26 °C, with a **single-sample bus misread
+  of 75 °C**, so atlas statistics must be robust (median/outlier rejection). Minimum voltage 10.8 V.
