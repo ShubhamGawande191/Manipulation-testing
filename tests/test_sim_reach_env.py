@@ -171,3 +171,29 @@ def test_targets_stay_in_table_workspace():
     env = ReachEnv(dr=DRConfig(enabled=False))
     targets = np.array([env.reset(seed=i)[1]["target"] for i in range(50)])
     assert (targets >= TARGET_BOX[0]).all() and (targets <= TARGET_BOX[1]).all()
+
+
+def test_integrate_command_respects_velocity_cap():
+    from robot_manipulator.sim.envs.reach import integrate_command
+
+    box = (np.full(5, -3.0), np.full(5, 3.0))
+    q = np.zeros(5)
+    full = integrate_command(q, np.ones(5), box)
+    capped = integrate_command(q, np.ones(5), box, max_step=0.01)
+    assert np.allclose(full, ACTION_SCALE) and np.allclose(capped, 0.01)
+    assert np.allclose(integrate_command(q, -np.ones(5), box, max_step=0.01), -0.01)
+
+
+def test_dr_samples_a_speed_cap_and_no_dr_is_uncapped():
+    from robot_manipulator.sim.envs.reach import HZ
+
+    env = ReachEnv(dr=DRConfig(enabled=True))
+    caps = []
+    for i in range(20):
+        env.reset(seed=i)
+        caps.append(env._max_step * HZ)
+    lo, hi = DRConfig().vel_cap_rad_s
+    assert min(caps) >= lo - 1e-9 and max(caps) <= hi + 1e-9 and max(caps) - min(caps) > 0.1
+    env2 = ReachEnv(dr=DRConfig(enabled=False))
+    env2.reset(seed=0)
+    assert env2._max_step is None

@@ -26,6 +26,9 @@ class DRConfig:
     # extra mass on body `gripper`: model has 0.212 kg past the wrist, user estimate 0.2-0.3 kg
     gripper_payload_kg: tuple[float, float] = (0.0, 0.09)
     action_delay_steps: tuple[int, ...] = (0, 1, 2)
+    # per-episode command speed cap [rad/s]; deploy runs at the harness --max-vel (slower first
+    # real runs). 1.0 = ACTION_SCALE * HZ, i.e. uncapped.
+    vel_cap_rad_s: tuple[float, float] = (0.5, 1.0)
     obs_noise_q: float = 0.005  # rad
     obs_noise_dq: float = 0.05  # rad/s
     joint_bias: float = 0.02  # rad, per-episode offset on measured q

@@ -26,6 +26,7 @@ from robot_manipulator.sim.envs.reach import (
     OBS_DIM,
 )
 from robot_manipulator.sim.model import DEFAULT_SCENE, JOINTS, MENAGERIE_COMMIT
+from robot_manipulator.sim.randomize import DRConfig
 
 OBS_LAYOUT = [
     *[f"q_{j}" for j in JOINTS[:N_ARM]],
@@ -143,6 +144,7 @@ def export_policy(
         "scene": DEFAULT_SCENE,
         "repo_commit": _git_head(),
         "dr": bool(dr),
+        "vel_cap_dr": list(DRConfig().vel_cap_rad_s) if dr else None,
         "train_steps": int(train_steps),
         "eval_success": eval_success,
         "exported_at": datetime.now(UTC).isoformat(),

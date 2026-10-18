@@ -107,11 +107,20 @@ def target_box(lo, hi, shrink: float = TARGET_SHRINK) -> tuple[np.ndarray, np.nd
     return mid - half, mid + half
 
 
-def integrate_command(q_cmd, action, box) -> np.ndarray:
-    """q_cmd' = clip(q_cmd + ACTION_SCALE * clip(a, -1, 1), lo, hi). Shared by env and deploy."""
+def integrate_command(q_cmd, action, box, max_step: float | None = None) -> np.ndarray:
+    """q_cmd' = clip(q_cmd + clip(ACTION_SCALE * clip(a, -1, 1), ±max_step), lo, hi).
+
+    Shared by env and deploy. ``max_step`` (rad per tick) is the velocity cap the commands will
+    actually be sent at (deploy: ``--max-vel / HZ``). Integrating with the cap keeps the policy's
+    running command from getting ahead of the arm. The first live run at 0.5 rad/s (trained at
+    1 rad/s, uncapped) drove one long reach well past its target.
+    """
     lo, hi = box
     a = np.clip(_vec(action, N_ARM, "action"), -1.0, 1.0)
-    return np.clip(_vec(q_cmd, N_ARM, "q_cmd") + ACTION_SCALE * a, lo, hi)
+    delta = ACTION_SCALE * a
+    if max_step is not None:
+        delta = np.clip(delta, -max_step, max_step)
+    return np.clip(_vec(q_cmd, N_ARM, "q_cmd") + delta, lo, hi)
 
 
 class ReachEnv(gym.Env):
@@ -144,6 +153,7 @@ class ReachEnv(gym.Env):
         self._prev_a = np.zeros(N_ARM)
         self._pending: deque[np.ndarray] = deque()
         self._delay = 0
+        self._max_step: float | None = None
         self._bias = np.zeros(N_ARM)
         self._step = 0
 
@@ -169,9 +179,11 @@ class ReachEnv(gym.Env):
         if self.dr.enabled:
             self._delay = int(rng.choice(self.dr.action_delay_steps))
             self._bias = rng.uniform(-self.dr.joint_bias, self.dr.joint_bias, N_ARM)
+            self._max_step = float(rng.uniform(*self.dr.vel_cap_rad_s)) / HZ
         else:
             self._delay = 0
             self._bias = np.zeros(N_ARM)
+            self._max_step = None
         mujoco.mj_setConst(self.model, self.data)
 
         _, ee_target = self.fk.sample_reachable(
@@ -206,7 +218,7 @@ class ReachEnv(gym.Env):
             a_exec = self._pending.popleft()
         else:
             a_exec = a
-        self._q_cmd = integrate_command(self._q_cmd, a_exec, self.box)
+        self._q_cmd = integrate_command(self._q_cmd, a_exec, self.box, self._max_step)
         self.data.ctrl[self._act[:N_ARM]] = self._q_cmd
         self.data.ctrl[self._act[N_ARM]] = GRIPPER_HOLD
         for _ in range(self.n_substeps):

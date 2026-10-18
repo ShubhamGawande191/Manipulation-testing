@@ -35,7 +35,14 @@ from robot_manipulator.sim.model import JOINTS, joint_ranges, load_model
 class OnnxReachPolicy(BasePolicy):
     name = "onnx_reach"
 
-    def __init__(self, onnx_path: str | Path, meta_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        onnx_path: str | Path,
+        meta_path: str | Path | None = None,
+        max_vel: float | None = None,
+    ) -> None:
+        """``max_vel`` [rad/s]: the SafetyFilter cap commands are sent at; the policy integrates at
+        it (see ``integrate_command``). None = uncapped (ACTION_SCALE * HZ)."""
         super().__init__()
         import onnxruntime as ort
 
@@ -52,6 +59,7 @@ class OnnxReachPolicy(BasePolicy):
         self.box = command_box(lo, hi)
         self.fk = FK()
         self.q_cmd: np.ndarray | None = None
+        self.max_step = None if max_vel is None else float(max_vel) / HZ
         self.last_action = np.zeros(N_ARM)
         self.last_obs: np.ndarray | None = None
 
@@ -99,6 +107,6 @@ class OnnxReachPolicy(BasePolicy):
         mean_action = np.asarray(self.session.run(None, {"obs": x[None]})[0], dtype=np.float64)
         a = np.clip(mean_action.reshape(N_ARM), -1.0, 1.0)
 
-        self.q_cmd = integrate_command(self.q_cmd, a, self.box)
+        self.q_cmd = integrate_command(self.q_cmd, a, self.box, self.max_step)
         self.last_action = a
         return np.r_[self.q_cmd, GRIPPER_HOLD][None, :]

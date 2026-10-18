@@ -98,7 +98,7 @@ def run_reach(
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     traj = TrajectoryLog(run_dir / "traj")
-    policy = OnnxReachPolicy(policy_path)
+    policy = OnnxReachPolicy(policy_path, max_vel=max_vel)
 
     sim_be = None
     real_be = None
@@ -118,10 +118,12 @@ def run_reach(
     arm_id = {"sim": "sim_so101", "fake": "fake_so101", "real": "so101_follower"}[backend]
     run_id = run_dir.name
     policy_step = ACTION_SCALE * HZ  # rad/s the policy can command at full action
-    if max_vel < policy_step:
+    trained_caps = policy.meta.get("vel_cap_dr")  # [lo, hi] rad/s seen in training, or absent
+    if max_vel < policy_step and not (trained_caps and max_vel >= trained_caps[0] - 1e-9):
         typer.echo(
             f"warning: --max-vel {max_vel} rad/s is below the policy's {policy_step:.2f} rad/s "
-            "step; commands are clipped to the cap (use --max-vel for the policy's scale)",
+            f"step and outside the speed caps it was trained with ({trained_caps or 'none'}); "
+            "the policy integrates at the cap, but expect degraded behaviour",
             err=True,
         )
     try:
