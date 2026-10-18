@@ -111,7 +111,12 @@ def calibrate(board, views: list[np.ndarray], size: tuple[int, int]) -> dict:
 
 @app.command()
 def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> None:
-    """Preview + auto-save board views for camera ``name`` (q / Esc to stop early)."""
+    """Preview + auto-save board views for camera ``name`` (q / Esc to stop early).
+
+    With a headless OpenCV build (no GUI), progress goes to the terminal and the annotated live
+    frame to ``runs/camcal/<name>/preview.jpg`` (open it in an image viewer that auto-reloads);
+    stop early with Ctrl+C.
+    """
     import cv2
 
     cam = load_camera_config()[name]
@@ -123,7 +128,9 @@ def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> No
         old.unlink()
     cap = cv2.VideoCapture(cam["path"])
     saved: list[tuple[np.ndarray, float]] = []
-    t0, last_save = time.monotonic(), 0.0
+    t0, last_save, last_preview = time.monotonic(), 0.0, 0.0
+    gui = True
+    cells: set[tuple[int, int]] = set()  # 3x3 image regions the saved views covered
     try:
         while len(saved) < target_views and time.monotonic() - t0 < max_seconds:
             ok, frame = cap.read()
@@ -140,6 +147,14 @@ def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> No
                     pts = cc.reshape(-1, 2)
                     saved.append((pts.mean(0), float(pts.std(0).mean())))
                     last_save = now
+                    h, w = gray.shape
+                    cx, cy = pts.mean(0)
+                    cells.add((min(int(3 * cy / h), 2), min(int(3 * cx / w), 2)))
+                    if not gui:
+                        typer.echo(
+                            f"\rsaved view {len(saved)}/{target_views} "
+                            f"({len(ci)} corners; image regions covered {len(cells)}/9)   "
+                        )
             n = 0 if ci is None else len(ci)
             cv2.putText(
                 show,
@@ -150,13 +165,28 @@ def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> No
                 (0, 255, 0),
                 2,
             )
-            cv2.imshow(f"camcal {name}", show)
-            if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
-                break
+            if gui:
+                try:
+                    cv2.imshow(f"camcal {name}", show)
+                    if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                        break
+                except cv2.error:
+                    gui = False
+                    typer.echo(
+                        f"no GUI in this OpenCV build: live preview -> {out / 'preview.jpg'}; "
+                        "Ctrl+C to stop early"
+                    )
+            if not gui and time.monotonic() - last_preview > 0.5:
+                cv2.imwrite(str(out / "preview.jpg"), show)
+                last_preview = time.monotonic()
+                typer.echo(f"\rcorners {n:2d}  saved {len(saved)}/{target_views}", nl=False)
+    except KeyboardInterrupt:
+        pass
     finally:
         cap.release()
-        cv2.destroyAllWindows()
-    typer.echo(f"saved {len(saved)} views -> {out}")
+        if gui:
+            cv2.destroyAllWindows()
+    typer.echo(("" if gui else "\n") + f"saved {len(saved)} views -> {out}")
 
 
 @app.command()
