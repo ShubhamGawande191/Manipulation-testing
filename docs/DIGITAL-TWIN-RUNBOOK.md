@@ -224,6 +224,10 @@ uv run gap fit runs/gap/<ts>_real                      # -> config/actuator_fit.
 - **Lesson (delay):** the real arm lagged the nominal sim by 80–100 ms. Make sure the delay search
   grid covers it (0..6 ticks), and **apply the fitted per-joint delay** wherever the fit is used,
   because `apply_actuator_fit` only sets model parameters and returns the delays.
+- **Lesson (closed loop):** a fit that predicts open-loop replay (held-out steps 6.6 mrad) can still be
+  wrong closed-loop. A policy trained on it hunted on the real arm (17/20, p90 2.3 cm, vs 20/20,
+  0.83 cm). Validate actuator fits by running a fixed policy in sim vs real (`harness reach
+  --settle`), and pin weakly identifiable parameters (kp) with independent data (static sag).
 - **Lesson (held-out):** fit on the chirps, judge on the motions the fit didn't see (steps, sine).
   Parameters pinned on their bounds mean the fit is compensating, not identifying.
 

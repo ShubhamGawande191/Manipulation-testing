@@ -234,3 +234,26 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   - Added `harness reach --settle` (no early stop; judge the final pose, report median/p90 final
     distance). Nominal sim at 1.0 rad/s: original median 0.39 cm, fitted 0.70 cm. The real
     settle run decides which twin matches the arm.
+
+## 2026-10-18 — settle test at 1.0 rad/s: the actuator fit does not transfer closed-loop
+
+Same 20 targets, `--settle --max-vel 1.0`, leader stowed (taught pose, pan −77.3°):
+
+| Policy | Within 2 cm at the end | Median final | p90 | Run |
+|---|---|---|---|---|
+| `pinc_box_3M` (nominal + broad DR) | **20/20** | **0.42 cm** | **0.83 cm** | `runs/harness/20261018-142938` |
+| `pinc_fit_3M` (fitted actuators) | 17/20 | 0.62 cm | 2.31 cm | `runs/harness/20261018-143208` |
+
+- Twin predictions vs real median: original 0.39 (nominal) / 0.5 (fitted) vs **0.42 real**; fitted
+  policy 0.70 (nominal) / 0.3 (fitted) vs **0.62 real**. **For closed-loop reaching the nominal twin
+  predicts the real arm better**, for both policies.
+- The fitted policy reaches (min 0.0–0.5 cm) and then **hunts**: the distance reversed direction
+  39–61 times per episode, ending 1.8–4.6 cm away.
+  - Likely mechanism: the v2 fit's kp (×0.06) is too soft. kp is the weakly identifiable
+    parameter (it trades off with friction/armature). A policy trained on sluggish servos pushes
+    harder and overshoots on the stiffer real arm.
+- **Decision:** the deployed reach policy stays `pinc_box_3M`. Don't train on the v2 fit.
+- **Next for the actuator model:** identify kp separately from **static sag**. sag ≈ gravity
+  torque / effective stiffness, and the survey already logs held poses with measured error. Then
+  fix kp and fit only damping/friction/armature/delay on chirps. Validate on a *closed-loop*
+  criterion (sim-vs-real settle of a fixed policy), not only open-loop replay.
