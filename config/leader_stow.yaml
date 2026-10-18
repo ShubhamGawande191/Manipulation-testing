@@ -7,7 +7,7 @@
 # Teach by hand (torque off): `uv run leader-stow --teach` (stow) / `--teach-rest`.
 port: /dev/so101_leader
 leader_id: my_so101_leader
-stow_pose_deg: null          # null -> rest pose with pan = default_stow_pan_deg
+stow_pose_deg: [-80.6, -106.4, 96.6, 75.6, -84.7, 1.1]  # null -> rest pose with pan = default_stow_pan_deg
 default_stow_pan_deg: -60.0  # the leader's left, away from the follower
 rest_pose_deg: [-3.1, -107.0, 96.6, 77.3, -85.1, 1.5]
 torque_limit: 300            # permille: gentle, yields if touched
