@@ -27,3 +27,21 @@ def test_calibrates_archived_board_images_to_sane_intrinsics():
     assert res["rms_px"] < 1.5 and res["views_used"] >= 15
     assert K[0, 0] == pytest.approx(K[1, 1], rel=0.03)  # square pixels
     assert 450 < K[0, 0] < 650 and 280 < K[0, 2] < 360 and 200 < K[1, 2] < 280
+
+
+def test_region_counts_and_missing():
+    from robot_manipulator.calib.camera import missing_regions, region_counts
+
+    pts = np.array([[10, 10], [630, 10], [320, 240], [320, 240], [630, 470]], dtype=float)
+    c = region_counts(pts, (480, 640))
+    assert c[0, 0] == 1 and c[0, 2] == 1 and c[1, 1] == 2 and c[2, 2] == 1 and c.sum() == 5
+    assert missing_regions(c, 2) == [
+        "top-left",
+        "top-centre",
+        "top-right",
+        "middle-left",
+        "middle-right",
+        "bottom-left",
+        "bottom-centre",
+        "bottom-right",
+    ]

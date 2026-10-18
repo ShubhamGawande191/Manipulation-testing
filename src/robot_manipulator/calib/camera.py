@@ -109,18 +109,58 @@ def calibrate(board, views: list[np.ndarray], size: tuple[int, int]) -> dict:
     }
 
 
+REGION_NAMES = (
+    ("top-left", "top-centre", "top-right"),
+    ("middle-left", "centre", "middle-right"),
+    ("bottom-left", "bottom-centre", "bottom-right"),
+)
+
+
+def region_counts(pts: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """(3, 3) number of board corners in each third of the image (rows top -> bottom)."""
+    h, w = shape[:2]
+    counts = np.zeros((3, 3), dtype=int)
+    for x, y in np.asarray(pts).reshape(-1, 2):
+        counts[min(int(3 * y / h), 2), min(int(3 * x / w), 2)] += 1
+    return counts
+
+
+def missing_regions(counts: np.ndarray, min_corners: int) -> list[str]:
+    return [REGION_NAMES[r][c] for r in range(3) for c in range(3) if counts[r, c] < min_corners]
+
+
+def _draw_regions(img: np.ndarray, counts: np.ndarray, min_corners: int) -> None:
+    import cv2
+
+    h, w = img.shape[:2]
+    for r in range(3):
+        for c in range(3):
+            done = counts[r, c] >= min_corners
+            x0, y0 = c * w // 3, r * h // 3
+            color = (0, 200, 0) if done else (0, 0, 255)
+            cv2.rectangle(img, (x0, y0), (x0 + w // 3 - 1, y0 + h // 3 - 1), color, 1)
+            cv2.putText(img, str(counts[r, c]), (x0 + 6, y0 + h // 3 - 8), 0, 0.6, color, 2)
+
+
 @app.command()
 def capture(
     name: str,
-    target_views: int = 25,
-    max_seconds: float = 300.0,
-    append: bool = typer.Option(False, help="keep existing views and add target_views more"),
+    target_views: int = typer.Option(25, help="stop after this many new views"),
+    max_seconds: float | None = typer.Option(None, help="default 300 s, 900 s --until-covered"),
+    append: bool = typer.Option(False, help="keep existing views and add more"),
+    until_covered: bool = typer.Option(
+        False,
+        help="keep going until every image third has --min-corners (overrides --target-views); "
+        "only views that add to a missing region are saved",
+    ),
+    min_corners: int = typer.Option(40, help="with --until-covered: corners needed per region"),
 ) -> None:
     """Preview + auto-save board views for camera ``name`` (q / Esc to stop early).
 
     With a headless OpenCV build (no GUI), progress goes to the terminal and the annotated live
     frame to ``runs/camcal/<name>/preview.jpg`` (open it in an image viewer that auto-reloads);
-    stop early with Ctrl+C.
+    stop early with Ctrl+C. The preview shows a 3x3 grid with corner counts per region (red =
+    still missing with --until-covered).
     """
     import cv2
 
@@ -129,19 +169,40 @@ def capture(
     board, _ = make_board()
     out = VIEWS_DIR / name
     out.mkdir(parents=True, exist_ok=True)
-    start = 0
+    counts = np.zeros((3, 3), dtype=int)
+    existing = sorted(out.glob("view_*.png"))
     if append:
-        start = len(list(out.glob("view_*.png")))
+        for f in existing:  # coverage so far
+            g = cv2.imread(str(f), cv2.IMREAD_GRAYSCALE)
+            cc, _ = detect(board, g)
+            if cc is not None:
+                counts += region_counts(cc, g.shape)
+        start = int(existing[-1].stem.split("_")[1]) + 1 if existing else 0
     else:
-        for old in out.glob("view_*.png"):
+        for old in existing:
             old.unlink()
+        start = 0
+    if until_covered:
+        target_views = 10_000
+        todo = missing_regions(counts, min_corners)
+        typer.echo(f"regions still needed ({min_corners}+ corners each): {', '.join(todo)}")
+        if not todo:
+            typer.echo("all regions covered already")
+            return
+
+    def done() -> bool:
+        if until_covered:
+            return not missing_regions(counts, min_corners)
+        return len(saved) >= target_views
+
+    if max_seconds is None:
+        max_seconds = 900.0 if until_covered else 300.0
     cap = cv2.VideoCapture(cam["path"])
     saved: list[tuple[np.ndarray, float]] = []
     t0, last_save, last_preview = time.monotonic(), 0.0, 0.0
     gui = True
-    cells: set[tuple[int, int]] = set()  # 3x3 image regions the saved views covered
     try:
-        while len(saved) < target_views and time.monotonic() - t0 < max_seconds:
+        while not done() and time.monotonic() - t0 < max_seconds:
             ok, frame = cap.read()
             if not ok:
                 continue
@@ -151,29 +212,21 @@ def capture(
             if cc is not None:
                 cv2.aruco.drawDetectedCornersCharuco(show, cc, ci)
                 now = time.monotonic()
-                if now - last_save > 0.7 and is_new_view(saved, cc):
+                add = region_counts(cc, gray.shape)
+                useful = not until_covered or bool(np.any((add > 0) & (counts < min_corners)))
+                if useful and now - last_save > 0.7 and is_new_view(saved, cc):
                     cv2.imwrite(str(out / f"view_{start + len(saved):02d}.png"), gray)
                     pts = cc.reshape(-1, 2)
                     saved.append((pts.mean(0), float(pts.std(0).mean())))
+                    counts += add
                     last_save = now
-                    h, w = gray.shape
-                    cx, cy = pts.mean(0)
-                    cells.add((min(int(3 * cy / h), 2), min(int(3 * cx / w), 2)))
                     if not gui:
-                        typer.echo(
-                            f"\rsaved view {len(saved)}/{target_views} "
-                            f"({len(ci)} corners; image regions covered {len(cells)}/9)   "
-                        )
+                        todo = missing_regions(counts, min_corners)
+                        tail = f"still need: {', '.join(todo)}" if todo else "all regions covered"
+                        typer.echo(f"\rsaved view {len(saved)} ({len(ci)} corners); {tail}   ")
             n = 0 if ci is None else len(ci)
-            cv2.putText(
-                show,
-                f"saved {len(saved)}/{target_views}  corners {n}",
-                (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
+            _draw_regions(show, counts, min_corners)
+            cv2.putText(show, f"saved {len(saved)}  corners {n}", (10, 25), 0, 0.7, (0, 255, 0), 2)
             if gui:
                 try:
                     cv2.imshow(f"camcal {name}", show)
@@ -188,7 +241,7 @@ def capture(
             if not gui and time.monotonic() - last_preview > 0.5:
                 cv2.imwrite(str(out / "preview.jpg"), show)
                 last_preview = time.monotonic()
-                typer.echo(f"\rcorners {n:2d}  saved {len(saved)}/{target_views}", nl=False)
+                typer.echo(f"\rcorners {n:2d}  saved {len(saved)}", nl=False)
     except KeyboardInterrupt:
         pass
     finally:
@@ -196,6 +249,7 @@ def capture(
         if gui:
             cv2.destroyAllWindows()
     typer.echo(("" if gui else "\n") + f"saved {len(saved)} views -> {out}")
+    typer.echo("corners per region (top -> bottom):\n" + str(counts))
 
 
 @app.command()
