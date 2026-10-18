@@ -137,11 +137,20 @@ def main(
     board, bcfg = make_board()
 
     # 1. board in the camera frame
-    frame = _grab(cam_name)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    cc, ci = detect(board, gray)
-    if cc is None:
-        raise RuntimeError("board not detected: make it fully visible and flat on the table")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for attempt in range(30):  # ~1 min: give the operator time to place the board
+        frame = _grab(cam_name)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        cc, ci = detect(board, gray)
+        if cc is not None and len(ci) >= 12:
+            break
+        if attempt == 0:
+            typer.echo("waiting for the board (flat on the table, fully visible)…")
+    else:
+        cv2.imwrite(str(OUT_DIR / f"{cam_name}_last.png"), frame)
+        raise RuntimeError(
+            f"board not detected; camera view saved to {OUT_DIR / f'{cam_name}_last.png'}"
+        )
     obj, img = board.matchImagePoints(cc, ci)
     ok, rvec, tvec = cv2.solvePnP(obj, img, K, dist)
     if not ok:
@@ -158,7 +167,6 @@ def main(
         cv2.putText(
             show, str(k), (int(u) + 10, int(v) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2
         )
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     img_path = OUT_DIR / f"{cam_name}_corners.png"
     cv2.imwrite(str(img_path), show)
     typer.echo(
