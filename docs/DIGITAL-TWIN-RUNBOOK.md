@@ -369,8 +369,8 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 3 Teleop | ✅ | elbow steady error 0.14° at P=24; trace `runs/teleop/20261017-204250.parquet` |
 | 4 Robot model | ✅ PincOpen variant (default) | 0.212 kg past wrist; collision near fold untrusted |
 | 5 Joint map | ✅ `calibrated: true` | live twin, all signs +1 / offsets 0, gripper closed ↔ 7 |
-| 6 Cameras | 🟡 stable paths + locked exposure done; **intrinsics: capture pending** | `cam-setup` mean 114 |
-| 7 Extrinsics | 🟡 tool ready (`camcal-extrinsics`); needs intrinsics + board square size + touch session | |
+| 6 Cameras | ✅ stable paths, locked exposure, intrinsics 53 views / 9 regions, rms 0.52 px | `config/camera_intrinsics/workspace.yaml` |
+| 7 Extrinsics | 🟡 blocked on arm kinematics: same corner touched two ways disagrees by 17–27 mm in twin FK; joint-offset fit says elbow ≈ −9° (lift/wflex −4°). Next: wrist→fingertip ruler check (model 190 mm) + 16-touch session | `runs/extrinsics/session2_2percorner.json` |
 | 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
 | 9 Actuator fit | 🟡 open-loop OK, **closed-loop not yet**: no twin (nominal / v2 / sag-pinned v3) reproduces 'box calm, fit hunts' (`gap closed-loop`). First fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
