@@ -26,6 +26,7 @@ ARM_JOINTS: tuple[str, ...] = JOINTS[:5]
 EE_SITE = "gripperframe"
 MENAGERIE_COMMIT = "3abca2e302625cec9429c49806121ea2855cef81"  # the vendored MJCF's upstream commit
 
+ACTUATOR_FIT = Path(__file__).resolve().parents[3] / "config" / "actuator_fit.yaml"
 ASSET_DIR = Path(str(resources.files(__package__).joinpath("assets", "so101")))
 
 

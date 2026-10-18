@@ -197,3 +197,40 @@ def test_dr_samples_a_speed_cap_and_no_dr_is_uncapped():
     env2 = ReachEnv(dr=DRConfig(enabled=False))
     env2.reset(seed=0)
     assert env2._max_step is None
+
+
+def test_actuator_fit_becomes_nominal_and_sets_delay(tmp_path):
+    import yaml
+
+    from robot_manipulator.sim.model import JOINTS, actuator_ids
+
+    fit = {
+        "hz": 50.0,
+        "joints": {
+            j: {
+                "kp_scale": 0.5,
+                "damping_scale": 2.0,
+                "frictionloss_scale": 1.0,
+                "armature_scale": 1.0,
+                "delay_steps": 3,
+                "rmse_rad": 0.01,
+            }
+            for j in JOINTS[:5]
+        },
+    }
+    path = tmp_path / "fit.yaml"
+    path.write_text(yaml.safe_dump(fit))
+    base = ReachEnv(dr=DRConfig(enabled=False))
+    fitted = ReachEnv(dr=DRConfig(enabled=False), actuator_fit=path)
+    a = actuator_ids(base.model, JOINTS)[0]
+    assert fitted.model.actuator_gainprm[a][0] == pytest.approx(
+        0.5 * base.model.actuator_gainprm[a][0]
+    )
+    fitted.reset(seed=0)
+    assert fitted._delay == 3
+    fitted_dr = ReachEnv(dr=DRConfig(enabled=True), actuator_fit=path)
+    delays = set()
+    for i in range(30):
+        fitted_dr.reset(seed=i)
+        delays.add(fitted_dr._delay)
+    assert delays <= {2, 3, 4} and len(delays) >= 2

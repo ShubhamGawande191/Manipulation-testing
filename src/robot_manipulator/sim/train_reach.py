@@ -47,16 +47,32 @@ PPO_KWARGS: dict[str, Any] = dict(
 )
 
 
-def _make_env(dr_enabled: bool):
+def _make_env(dr_enabled: bool, actuator_fit: bool = False):
     from robot_manipulator.sim.envs.reach import DRConfig, ReachEnv
 
-    return ReachEnv(dr=DRConfig(enabled=dr_enabled))
+    return ReachEnv(dr=DRConfig(enabled=dr_enabled), actuator_fit=actuator_fit)
 
 
-def _vec(dr_enabled: bool, n_envs: int, dummy: bool):
+def _fit_record() -> dict[str, Any]:
+    """The actuator fit a policy was trained on (recorded in policy_meta.json)."""
+    import hashlib
+
+    import yaml
+
+    from robot_manipulator.sim.model import ACTUATOR_FIT
+
+    data = ACTUATOR_FIT.read_bytes()
+    return {
+        "path": str(ACTUATOR_FIT),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "joints": yaml.safe_load(data)["joints"],
+    }
+
+
+def _vec(dr_enabled: bool, n_envs: int, dummy: bool, actuator_fit: bool = False):
     from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
-    fns = [partial(_make_env, dr_enabled) for _ in range(n_envs)]
+    fns = [partial(_make_env, dr_enabled, actuator_fit) for _ in range(n_envs)]
     return DummyVecEnv(fns) if (dummy or n_envs == 1) else SubprocVecEnv(fns)
 
 
@@ -122,6 +138,7 @@ def train(
     final_episodes: int = 100,
     dummy: bool = False,
     batch_size: int = PPO_KWARGS["batch_size"],
+    actuator_fit: bool = False,
 ) -> dict[str, Any]:
     """Run PPO, keep the best checkpoint, evaluate it, and export. Returns the summary dict."""
     from stable_baselines3 import PPO
@@ -133,11 +150,14 @@ def train(
     set_random_seed(seed)
     t0 = time.monotonic()
 
-    venv = _vec(dr, n_envs, dummy)
+    venv = _vec(dr, n_envs, dummy, actuator_fit)
     venv.seed(seed)
     train_vn = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, training=True)
     eval_vn = VecNormalize(
-        DummyVecEnv([partial(_make_env, dr)]), training=False, norm_reward=False, clip_obs=10.0
+        DummyVecEnv([partial(_make_env, dr, actuator_fit)]),
+        training=False,
+        norm_reward=False,
+        clip_obs=10.0,
     )
     eval_vn.seed(seed + 1000)
 
@@ -155,7 +175,7 @@ def train(
     best = PPO.load(str(out / "best_model.zip"), device="cpu")
     final: dict[str, dict[str, float]] = {}
     for label, dr_flag in (("dr", True), ("nodr", False)):
-        vn = VecNormalize.load(str(out / "vecnormalize.pkl"), _vec(dr_flag, 1, True))
+        vn = VecNormalize.load(str(out / "vecnormalize.pkl"), _vec(dr_flag, 1, True, actuator_fit))
         vn.training = False
         vn.norm_reward = False
         vn.seed(seed + (2000 if dr_flag else 3000))
@@ -177,6 +197,7 @@ def train(
             "seed": seed,
             "wall_time_s": round(wall, 1),
             "best_train_eval_success": cb.best,
+            "actuator_fit": _fit_record() if actuator_fit else None,
             "ppo": {
                 k: (f"linear({v(1.0)})" if callable(v) else v)
                 for k, v in ppo_kwargs.items()
@@ -208,6 +229,9 @@ def main(
     final_episodes: int = typer.Option(100),
     dummy: bool = typer.Option(False, help="single-process vec env (smoke tests)"),
     batch_size: int = typer.Option(PPO_KWARGS["batch_size"], help="PPO minibatch size"),
+    actuator_fit: bool = typer.Option(
+        False, "--actuator-fit/--nominal", help="train on config/actuator_fit.yaml (real2sim)"
+    ),
 ) -> None:
     if out is None:
         out = Path("runs") / "ppo_reach" / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -222,6 +246,7 @@ def main(
         final_episodes=final_episodes,
         dummy=dummy,
         batch_size=batch_size,
+        actuator_fit=actuator_fit,
     )
     typer.echo(json.dumps(summary, indent=2))
 

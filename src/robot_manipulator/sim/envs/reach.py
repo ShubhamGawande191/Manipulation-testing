@@ -13,6 +13,7 @@ The gripper is held at `GRIPPER_HOLD`.
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
@@ -126,10 +127,25 @@ def integrate_command(q_cmd, action, box, max_step: float | None = None) -> np.n
 class ReachEnv(gym.Env):
     metadata = {"render_modes": [], "render_fps": HZ}
 
-    def __init__(self, dr: DRConfig | None = None, model: mujoco.MjModel | None = None) -> None:
+    def __init__(
+        self,
+        dr: DRConfig | None = None,
+        model: mujoco.MjModel | None = None,
+        actuator_fit: bool | str | Path = False,
+    ) -> None:
+        """``actuator_fit``: True (config/actuator_fit.yaml) or a path. The fitted stiffness,
+        damping, friction and armature become the nominal model that DR randomizes around, and the
+        action delay is the fitted per-joint median (±1 tick under DR)."""
         super().__init__()
         self.dr = dr if dr is not None else DRConfig()
         self.model = model if model is not None else load_model()
+        self._fit_delay: int | None = None
+        if actuator_fit:
+            from robot_manipulator.sim.model import ACTUATOR_FIT, apply_actuator_fit
+
+            path = ACTUATOR_FIT if actuator_fit is True else Path(actuator_fit)
+            delays = apply_actuator_fit(self.model, path)
+            self._fit_delay = int(round(float(np.median(list(delays.values()))))) if delays else 0
         self.data = mujoco.MjData(self.model)
         self.fk = FK(self.model)
         self._qadr = joint_qpos_adr(self.model, JOINTS)
@@ -176,12 +192,17 @@ class ReachEnv(gym.Env):
         super().reset(seed=seed)
         rng = self.np_random
         apply_dr(self.model, self._nominal, self.dr, rng, self._gripper_body)
+        if self._fit_delay is not None:
+            d = self._fit_delay
+            choices = tuple(max(0, d + k) for k in (-1, 0, 1)) if self.dr.enabled else (d,)
+        else:
+            choices = self.dr.action_delay_steps if self.dr.enabled else (0,)
         if self.dr.enabled:
-            self._delay = int(rng.choice(self.dr.action_delay_steps))
+            self._delay = int(rng.choice(choices))
             self._bias = rng.uniform(-self.dr.joint_bias, self.dr.joint_bias, N_ARM)
             self._max_step = float(rng.uniform(*self.dr.vel_cap_rad_s)) / HZ
         else:
-            self._delay = 0
+            self._delay = int(choices[0])
             self._bias = np.zeros(N_ARM)
             self._max_step = None
         mujoco.mj_setConst(self.model, self.data)
