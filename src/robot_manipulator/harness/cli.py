@@ -26,6 +26,7 @@ import typer
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 
 HOME_TOL = 0.05  # rad, per joint; measured q carries sensor bias under DR
+SAFETY_MARGIN = 0.05  # rad, SafetyFilter default margin inside the joint limits
 GLIDE_TIMEOUT_S = 5.0
 BACKENDS = ("sim", "fake", "real")
 
@@ -80,7 +81,10 @@ def run_reach(
     model = load_model()
     fk = FK(model)
     lo6, hi6 = joint_ranges(model)
-    home6 = np.r_[HOME_ARM, GRIPPER_HOLD]
+    # HOME must be a pose the SafetyFilter will actually command: GRIPPER_HOLD sits exactly on the
+    # PincOpen limit and the filter keeps commands `margin` inside, so an unclipped HOME left a
+    # built-in 0.05 rad gripper error = HOME_TOL and every real HOME glide timed out (2026-10-17).
+    home6 = np.clip(np.r_[HOME_ARM, GRIPPER_HOLD], lo6 + SAFETY_MARGIN, hi6 - SAFETY_MARGIN)
     rng = np.random.default_rng(seed)
     if targets is None:
         # same distribution as training: joint-space samples whose EE lies in TARGET_BOX
@@ -137,7 +141,9 @@ def run_reach(
             else:
                 be = real_be
 
-            safety = SafetyFilter(lo=lo6, hi=hi6, max_vel=max_vel, clock=clock)
+            safety = SafetyFilter(
+                lo=lo6, hi=hi6, margin=SAFETY_MARGIN, max_vel=max_vel, clock=clock
+            )
             home = Skill(
                 "home",
                 GlideTo(home6, max_vel=max_vel, hz=HZ),

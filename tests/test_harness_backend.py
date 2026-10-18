@@ -172,7 +172,7 @@ def test_lerobot_live_sends_degrees_and_close_disconnects(tmp_path):
     assert robot.disconnected is True
 
 
-def test_dry_run_connect_is_read_only(monkeypatch):
+def test_dry_run_connect_is_read_only(monkeypatch, tmp_path):
     """A dry run must never call SOFollower.connect() (enables all torques at once) and must
     close without dropping torque."""
     import robot_manipulator.harness.backend as backend_mod
@@ -205,6 +205,7 @@ def test_dry_run_connect_is_read_only(monkeypatch):
         "robot_manipulator.arm.build_follower_config", lambda **kw: None, raising=True
     )
     lb = backend_mod.LeRobotBackend("unused", JointMap.from_yaml(REPO_CFG), dry_run=True)
+    lb.telemetry.out_dir = tmp_path  # never write test telemetry into runs/
     lb.read()
     lb.close()
     assert calls == ["bus.connect", "bus.disconnect(disable_torque=False)"]

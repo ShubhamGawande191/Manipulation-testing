@@ -242,6 +242,10 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
   a mismatch, so a stock-gripper policy can't run on the PincOpen model.
 - **Lesson (target sampling):** sample targets from the **task workspace** (`TARGET_BOX`), not from
   joint space alone. Otherwise training wastes effort on targets with the arm folded over itself.
+- **Lesson (targets the filter will actually send):** clip every scripted target (HOME etc.) into
+  the SafetyFilter command box. The first live run failed HOME 5/5. The arm itself was within 2°,
+  but the gripper target sat on the joint limit and the filter's 0.05 rad margin made it unreachable
+  within HOME_TOL. In sim it passed by a hair, so test with real-sized errors.
 - **Lesson (one sampler):** the harness and the trainer must share one target sampler. When they
   differed, harness success dropped from 99 % to 78 %.
 

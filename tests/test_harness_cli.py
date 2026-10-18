@@ -112,3 +112,19 @@ def test_real_backend_refuses_live_while_uncalibrated(artifact, tmp_path):
             joint_map_path=cfg,
             out=tmp_path / "real",
         )
+
+
+def test_home_is_inside_the_safety_command_box():
+    """Regression 2026-10-17: HOME's gripper sat on the joint limit, the SafetyFilter clipped it
+    0.05 rad inside, and every real HOME glide timed out on that built-in error."""
+    import numpy as np
+
+    from robot_manipulator.harness import cli
+    from robot_manipulator.sim.envs.reach import GRIPPER_HOLD, HOME_ARM
+    from robot_manipulator.sim.model import joint_ranges, load_model
+
+    lo, hi = joint_ranges(load_model())
+    home = np.clip(np.r_[HOME_ARM, GRIPPER_HOLD], lo + cli.SAFETY_MARGIN, hi - cli.SAFETY_MARGIN)
+    assert np.all(home >= lo + cli.SAFETY_MARGIN - 1e-12)
+    assert np.all(home <= hi - cli.SAFETY_MARGIN + 1e-12)
+    assert abs(home[5] - GRIPPER_HOLD) <= cli.SAFETY_MARGIN + 1e-9 < cli.HOME_TOL + 1e-3
