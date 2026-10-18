@@ -191,6 +191,29 @@ uv run camcal intrinsics <name>              # -> config/camera_intrinsics/<name
 
 ## 7. Camera extrinsics (camera → robot base) — *in progress*
 
+**Preferred: automatic, with the wrist camera** (`calib/wristcal.py`; no touching):
+
+```bash
+uv run camcal-wrist plan                         # sim: viewpoints over the board (roll kept ±60° of natural)
+uv run camcal-wrist run --backend sim            # rehearse the motion in the twin
+uv run camcal-wrist run --backend real --live    # operator present, ~3 min, arm folded at the start
+uv run camcal-wrist solve runs/wristcal/<ts>     # report; add --write to save poses/intrinsics
+```
+
+The follower moves the wrist camera through ~24 planned viewpoints over the board (comfortable
+reach) and stores joints + wrist + workspace images at each. A bundle adjustment solves the board
+pose, the wrist-camera mount and the lift/elbow/wrist_flex encoder offsets from the reprojection
+of every board corner. Held-out views validate it. The workspace camera pose follows from its own
+view of the board. Pan and wrist_roll offsets aren't observable this way (pan moves everything
+rigidly; roll is absorbed by the camera mount).
+
+- **Lesson (touching at full stretch):** with the board where the overhead camera sees it whole,
+  the far corners were at the edge of the arm's reach, and touching them in several poses wasn't
+  possible. The wrist-camera method only needs the board visible, from wherever the arm reaches
+  comfortably.
+
+**Fallback: corner touches** (needs every corner within comfortable reach):
+
 ```bash
 uv run camcal capture workspace          # 15–25 board views, varied tilt and position
 uv run camcal intrinsics workspace       # -> config/camera_intrinsics/workspace.yaml
