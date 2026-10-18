@@ -25,6 +25,7 @@ from robot_manipulator.sim.model import ASSET_DIR, JOINTS, joint_qpos_adr, load_
 REPO = Path(__file__).resolve().parents[3]
 CONFIG = REPO / "config" / "scene_bench.yaml"
 OUT = ASSET_DIR / "scene_bench.xml"
+EXTRINSICS = REPO / "config" / "extrinsics" / "workspace.yaml"
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
@@ -69,9 +70,13 @@ def leader_geoms(pose_deg: np.ndarray) -> list[str]:
     return lines
 
 
-def build(cfg_path: Path = CONFIG, out: Path = OUT) -> Path:
+def build(cfg_path: Path = CONFIG, out: Path = OUT, extrinsics: Path | None = EXTRINSICS) -> Path:
+    """Write the bench MJCF. The workspace camera pose comes from ``extrinsics`` when that file
+    exists (calibrated), else from the placeholder in ``cfg_path``."""
     cfg = yaml.safe_load(Path(cfg_path).read_text())
     t, c, cam, ld = cfg["table"], cfg["column"], cfg["workspace_camera"], cfg["leader"]
+    if extrinsics is not None and Path(extrinsics).exists():  # `uv run camcal-extrinsics` output
+        cam = {**cam, **yaml.safe_load(Path(extrinsics).read_text())}
     stow = yaml.safe_load((REPO / "config" / "leader_stow.yaml").read_text())
     if ld["pose"] == "stow" and stow.get("stow_pose_deg") is not None:
         pose = np.asarray(stow["stow_pose_deg"], dtype=float)

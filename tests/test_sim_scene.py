@@ -2,13 +2,22 @@ import pytest
 
 pytest.importorskip("mujoco")
 
-from robot_manipulator.sim.model import JOINTS, load_model  # noqa: E402
+from robot_manipulator.sim.model import ASSET_DIR, JOINTS, load_model  # noqa: E402
 from robot_manipulator.sim.scene import build  # noqa: E402
 
 
-def test_bench_scene_keeps_follower_layout_and_adds_obstacles():
-    out = build()
-    m = load_model(out.name)
+@pytest.fixture
+def scene_xml():
+    # beside the vendored assets (the MJCF include is relative), never over the real scene_bench.xml
+    out = ASSET_DIR / "_test_scene_bench.xml"
+    try:
+        yield build(out=out)
+    finally:
+        out.unlink(missing_ok=True)
+
+
+def test_bench_scene_keeps_follower_layout_and_adds_obstacles(scene_xml):
+    m = load_model(scene_xml.name)
     assert m.nu == 6 and [m.actuator(i).name for i in range(6)] == list(JOINTS)
     names = {m.geom(i).name for i in range(m.ngeom)}
     assert {"table", "column", "camera_arm"} <= names

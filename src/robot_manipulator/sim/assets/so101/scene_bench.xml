@@ -21,7 +21,7 @@
     <geom name="camera_arm" type="box" size="0.0355 0.013 0.012"
       pos="0.0225 0.1145 0.5105"
       material="column"/>
-    <camera name="workspace_cam" mode="fixed" pos="0.0249 0.1131 0.4896" xyaxes="0.03461 -0.99921 -0.01956 0.91516 0.02382 0.40239" fovy="48.3"/>
+    <camera name="workspace_cam" mode="fixed" pos="0.045 0.1145 0.5125" xyaxes="0 -1 0 1.000000 0 0.000000" fovy="46.8"/>
     <body name="leader" pos="0.0000 0.2290 0">
       <geom type="mesh" mesh="base_motor_holder_so101_v1" pos="0.00615936 -9.28791e-06 0.0488309" quat="-0.00298583 0.740446 0.00270561 0.672104" group="2" rgba="0.25 0.55 0.95 1" contype="0" conaffinity="0"/>
       <geom type="mesh" mesh="base_so101_v2" pos="0.0128157 -3.59712e-06 0.0166978" quat="0.639474 -0.63996 -0.301085 -0.30145" group="2" rgba="0.25 0.55 0.95 1" contype="0" conaffinity="0"/>
