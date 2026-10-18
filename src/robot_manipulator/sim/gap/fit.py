@@ -30,8 +30,12 @@ from robot_manipulator.sim.model import (
 from robot_manipulator.sim.randomize import NominalParams
 
 DELAYS = (0, 1, 2, 3, 4, 5, 6)  # real arm lags nominal sim 80-100 ms = 4-5 ticks (2026-10-18)
-LO = np.array([0.2, 0.05, 0.05, 0.1])  # kp, damping, frictionloss, armature scales
-HI = np.array([5.0, 10.0, 10.0, 10.0])
+# kp, damping, frictionloss, armature scales. Widened 2026-10-18: the first real fit pinned kp at
+# 0.2 and friction/armature at their bounds (LeRobot runs the servos at P=16-24, far softer).
+LO = np.array([0.03, 0.05, 0.02, 0.02])
+HI = np.array([5.0, 20.0, 40.0, 20.0])
+# log-space starting points: nominal, softer/heavier, much softer with more friction
+STARTS = (np.zeros(4), np.log([0.3, 2.0, 2.0, 2.0]), np.log([0.1, 3.0, 10.0, 4.0]))
 
 
 @dataclass
@@ -113,24 +117,37 @@ def fit_joint(
     base = q_cmd[0].copy()
     n_substeps = max(1, round(1.0 / (hz * model.opt.timestep)))
 
-    def residual(x: np.ndarray, delay: int) -> np.ndarray:
-        p = ActuatorParams(*x, delay_steps=delay)
+    # Optimise log-scales: the bounds span ~3 decades (0.02x .. 40x), and on linear scales the
+    # trust region converged to a low-stiffness local minimum that mimics delay (2026-10-18).
+    def residual(z: np.ndarray, delay: int) -> np.ndarray:
+        p = ActuatorParams(*np.exp(z), delay_steps=delay)
         apply_params(model, nominal, joint, p)
         sim = simulate_joint(model, joint, q_cmd, delay, base, n_substeps)
         return sim - q_meas
 
     best: FitResult | None = None
     for delay in delays:
-        sol = least_squares(
-            residual,
-            x0=np.ones(4),
-            args=(delay,),
-            bounds=(LO, HI),
-            max_nfev=max_nfev,
+        # MuJoCo friction loss makes the objective non-smooth: a coarse finite-difference step and a
+        # few starts avoid stalling in a low-stiffness minimum that mimics delay. kp, friction and
+        # armature still trade off (weakly identifiable from a chirp); delay and damping are
+        # identified. Judge fits by held-out prediction error (gap compare), not parameter values.
+        sol = min(
+            (
+                least_squares(
+                    residual,
+                    x0=x0,
+                    args=(delay,),
+                    bounds=(np.log(LO), np.log(HI)),
+                    max_nfev=max_nfev,
+                    diff_step=0.05,
+                )
+                for x0 in STARTS
+            ),
+            key=lambda r: r.cost,
         )
         rmse = float(np.sqrt(np.mean(sol.fun**2)))
         if best is None or rmse < best.rmse_rad:
-            params = ActuatorParams(*sol.x, delay_steps=delay)
+            params = ActuatorParams(*np.exp(sol.x), delay_steps=delay)
             best = FitResult(joint=JOINTS[joint], params=params, rmse_rad=rmse, nfev=int(sol.nfev))
     assert best is not None
     apply_params(model, nominal, joint, ActuatorParams())  # leave the model at nominal

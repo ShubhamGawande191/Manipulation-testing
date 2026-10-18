@@ -214,3 +214,12 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   - held-out `steps` **18.7 → 9.8 mrad**, held-out `sine_all` 25.5 → 18.8 mrad.
 - Remaining: a static offset on lift (~18 mrad) and elbow (~10 mrad) across all motions. That's
   gravity sag / steady error, which these parameters don't model.
+- **Wide-bounds refit (v2, current `config/actuator_fit.yaml`)**: kp ×0.06–0.07, damping ×1.7–4,
+  friction ×8–18, armature ×3–5 (wrist_roll 0.23), delay 0–1. Nothing sits on a bound. Held-out:
+  `steps` **6.6 mrad** (v1 9.8, nominal 18.7), `sine_all` **12.0** (v1 18.8, nominal 25.5). The static
+  offset on held-still joints fell (lift ~18 → ~9 mrad, elbow ~10 → ~3), because the softer servo
+  now sags physically. No artificial offset term needed. Both fits are archived in `runs/gap/fits/`.
+- **Identifiability finding:** a synthetic chirp (truth kp ×0.8, damping ×1.5, delay 1) is matched to
+  1.9 mrad with kp ×0.61 and friction ×0.25. kp, friction and armature trade off; delay and damping
+  are identified. The fitter now uses log-scales, `diff_step=0.05` and 3 starts (the default step
+  stalled in a delay-mimicking minimum). **Trust held-out prediction, not individual parameters.**
