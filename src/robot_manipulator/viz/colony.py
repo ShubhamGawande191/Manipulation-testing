@@ -1,54 +1,61 @@
-"""Feed for Bot Crossing (github.com/Station-Sciences/bot-crossing): the bench as a colony.
+"""Lab board for Bot Crossing (github.com/Station-Sciences/bot-crossing): what is next, per repo.
 
-Bot Crossing draws every agent thread on the machine as a little bot on a hex zone per repo. Its
-``integrations/bot-crossing/so101.mjs`` adapter reads the feed written here, so the robot work
-shows up next to the Claude Code threads:
+Bot Crossing draws every coding-agent thread as a bot on a hex zone per repo. The
+``integrations/bot-crossing/lab.mjs`` adapter reads the feed written here and adds, to each repo's
+zone:
 
-- zone **SO-101 real arm**: live real-arm runs (harness reach, survey, gap replay)
-- zone **SO-101 sim**: sim harness runs, sim gap replays and PPO training runs
-- zone **SO-101 twin**: one bot per stage of the digital-twin runbook status table
+- **tasks** from ``<repo>/.colony/tasks.yaml``: the work that is next, whoever does it. Your
+  to-dos (``owner: you``, ``status: todo``) hold a ``?``: data collection, measurements, live
+  runs, anything an agent cannot do itself. Work in progress (``doing``) hammers, ``failed``
+  slumps with ``!``, ``waiting`` (on another task) potters, and ``done`` celebrates for two days,
+  then leaves the map.
+- **robot runs** (repos with ``runs/``, i.e. this one): only the latest run of each kind from the
+  last two days, plus anything being written right now. Older runs stay on disk, off the map.
 
-Bot state follows Bot Crossing's precedence (first match wins): a run being written right now
-hammers (``running``); a failed run slumps (``hasError``); a clean live real-arm run celebrates
-(``prState: merged``); a runbook stage in progress (🟡) waits on you (``unread``, the ``?``).
-Building size is the run folder's size.
+Repos: every ``<root>/*/.colony/tasks.yaml`` under ``~/Desktop``, ``~/projects``, ``~/code`` and
+``~/src``, plus the paths in ``~/.config/lab-colony/projects.yaml`` (``projects: [path, ...]``).
+Agent threads themselves come from Bot Crossing's own Claude Code / Codex adapters.
 
     uv run colony-feed               # write once
     uv run colony-feed --watch 3     # keep it fresh while Bot Crossing is open
 
-Read-only over ``runs/`` and ``docs/``; the only file written is the feed (atomic replace).
+Read-only over the repos; the only file written is the feed (atomic replace).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import time
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 import typer
+import yaml
 
 REPO = Path(__file__).resolve().parents[3]
+HOME = Path.home()
 FEED = Path(
-    os.environ.get(
-        "BOT_CROSSING_SO101_FEED",
-        Path.home() / ".local" / "state" / "so101-colony" / "threads.json",
-    )
+    os.environ.get("LAB_COLONY_FEED", HOME / ".local" / "state" / "lab-colony" / "threads.json")
 )
-RUNBOOK = REPO / "docs" / "DIGITAL-TWIN-RUNBOOK.md"
-RUNNING_S = 30.0  # a run folder written to this recently, without a summary, is still running
+CONFIG = HOME / ".config" / "lab-colony" / "projects.yaml"
+SEARCH_ROOTS = [HOME / d for d in ("Desktop", "projects", "code", "src")]
+TASKS_FILE = Path(".colony") / "tasks.yaml"
+RUN_WINDOW_DAYS = 2.0
+DONE_SHOWN_DAYS = 2.0
+RUNNING_S = 30.0
 TRAINING_RUNNING_S = 120.0
-MAX_AGE_DAYS = 30.0
 PASS_RATE = 0.9
-ZONE_REAL, ZONE_SIM, ZONE_TWIN = "SO-101 real arm", "SO-101 sim", "SO-101 twin"
+DAY_MS = 86_400_000
+OWNERS = ("you", "agent")
+STATUSES = ("todo", "doing", "waiting", "done", "failed")
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
+# ---------------------------------------------------------------- helpers
 def _mtime_ms(path: Path) -> int:
-    """Latest mtime under ``path`` (the folder itself and its direct children), epoch ms."""
     times = [path.stat().st_mtime]
     if path.is_dir():
         times += [c.stat().st_mtime for c in path.iterdir()]
@@ -68,232 +75,233 @@ def _json(path: Path) -> dict | None:
         return None  # missing, or being written right now
 
 
-def _thread(
-    tid: str, title: str, zone: str, path: Path, now_ms: int, **extra: Any
-) -> dict[str, Any]:
-    last = _mtime_ms(path)
+def _base(tid: str, title: str, repo: Path, **extra: Any) -> dict[str, Any]:
     t = {
-        "id": f"so101:{tid}",
+        "id": f"lab:{tid}",
         "title": title,
-        "preview": extra.pop("preview", ""),
-        "project": zone,
-        "projectPath": str(REPO),
+        "preview": "",
+        "project": repo.name,  # same name + path as the agent threads: one zone per repo
+        "projectPath": str(repo),
         "worktree": "",
-        "cwd": str(path if path.is_dir() else path.parent),
+        "cwd": str(repo),
         "gitBranch": "",
-        "model": extra.pop("model", ""),
+        "model": "",
         "effort": "",
-        "createdAt": int(1000 * path.stat().st_ctime),
-        "lastActivityAt": last,
+        "createdAt": 0,
+        "lastActivityAt": 0,
         "lastFocusedAt": 0,
         "running": False,
         "unread": False,
         "hasError": False,
         "archived": False,
-        "sizeBytes": _size(path),
-        "source": "so101",
+        "sizeBytes": 0,
+        "source": "lab",
         "canOpen": True,
-        "ref": {"path": str(path)},
+        "ref": {"path": str(repo)},
     }
-    t.update(extra)
+    t.update({k: v for k, v in extra.items() if v is not None})
     return t
 
 
-def _recent(path: Path, now_ms: int) -> bool:
-    return now_ms - _mtime_ms(path) < MAX_AGE_DAYS * 86_400_000
+# ---------------------------------------------------------------- tasks
+def _date_ms(v: Any, fallback: int) -> int:
+    if isinstance(v, datetime):
+        return int(1000 * v.timestamp())
+    if isinstance(v, date):
+        return int(1000 * datetime(v.year, v.month, v.day, 12).timestamp())
+    if isinstance(v, str):
+        try:
+            return _date_ms(datetime.fromisoformat(v), fallback)
+        except ValueError:
+            pass
+    return fallback
 
 
-def harness_threads(runs: Path, now_ms: int) -> list[dict]:
+def task_threads(repo: Path, now_ms: int) -> list[dict]:
+    """Bots for ``<repo>/.colony/tasks.yaml``; malformed entries are skipped, not fatal."""
+    f = repo / TASKS_FILE
+    try:
+        doc = yaml.safe_load(f.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    file_ms = _mtime_ms(f)
     out = []
-    for d in sorted((runs / "harness").glob("2*")):
-        if not d.is_dir() or not _recent(d, now_ms):
+    for task in doc.get("tasks") or []:
+        if not isinstance(task, dict) or not task.get("id") or not task.get("title"):
+            continue
+        owner = task.get("owner") if task.get("owner") in OWNERS else "agent"
+        status = task.get("status") if task.get("status") in STATUSES else "todo"
+        updated = _date_ms(task.get("updated"), file_ms)
+        old_done = status == "done" and now_ms - updated > DONE_SHOWN_DAYS * DAY_MS
+        who = "👤 you" if owner == "you" else "🤖 agent"
+        title = f"{who} · {task['title']}"
+        if status == "waiting" and task.get("waits_for"):
+            title += f" (waits for {task['waits_for']})"
+        link = task.get("link")
+        target = (repo / link) if link else (repo / TASKS_FILE)
+        out.append(
+            _base(
+                f"task:{repo.name}:{task['id']}",
+                title,
+                repo,
+                preview=str(task.get("detail", ""))[:240],
+                model=status,
+                createdAt=updated,
+                lastActivityAt=updated,
+                running=status == "doing",
+                unread=owner == "you" and status == "todo",
+                hasError=status == "failed",
+                prState="merged" if status == "done" and not old_done else None,
+                archived=old_done,
+                sizeBytes=2000 * (1 + len(str(task.get("detail", "")))),
+                ref={"path": str(target if target.exists() else repo)},
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------- robot runs
+def _run(kind: str, d: Path, title: str, repo: Path, **extra: Any) -> dict:
+    return _base(
+        f"run:{repo.name}:{kind}:{d.name}",
+        title,
+        repo,
+        createdAt=int(1000 * d.stat().st_ctime),
+        lastActivityAt=_mtime_ms(d),
+        sizeBytes=_size(d),
+        cwd=str(d),
+        ref={"path": str(d)},
+        **extra,
+    )
+
+
+def _run_candidates(repo: Path, now_ms: int) -> list[tuple[str, dict]]:
+    """(kind, thread) for every recent robot run; ``latest_runs`` keeps one per kind."""
+    runs = repo / "runs"
+    out: list[tuple[str, dict]] = []
+
+    def recent(d: Path) -> bool:
+        return now_ms - _mtime_ms(d) < RUN_WINDOW_DAYS * DAY_MS
+
+    def fresh(d: Path, s: float = RUNNING_S) -> bool:
+        return now_ms - _mtime_ms(d) < 1000 * s
+
+    for d in sorted((runs / "harness").glob("2*")) if (runs / "harness").exists() else []:
+        if not d.is_dir() or not recent(d):
             continue
         s = _json(d / "summary.json")
-        if s is None:  # no summary yet: running if fresh, else an interrupted run
-            fresh = now_ms - _mtime_ms(d) < 1000 * RUNNING_S
-            out.append(
-                _thread(
-                    f"harness:{d.name}",
-                    f"reach · {d.name} · {'running' if fresh else 'interrupted'}",
-                    ZONE_SIM,
-                    d,
-                    now_ms,
-                    running=fresh,
-                    archived=not fresh,  # Ctrl+C'd experiment, no result: back to the ship
-                )
-            )
+        if s is None:
+            if fresh(d):
+                out.append(("reach", _run("reach", d, "⚙ reach · running", repo, running=True)))
             continue
-        real_live = s.get("backend") == "real" and bool(s.get("live"))
-        policy = Path(s.get("policy", "")).parent.name
-        rate = s.get("success_rate")
-        n = s.get("n_episodes", 0)
+        live = s.get("backend") == "real" and bool(s.get("live"))
+        if s.get("backend") == "real" and not live:
+            continue  # dry runs move nothing: not worth a bot
+        rate, n = s.get("success_rate"), s.get("n_episodes", 0)
         med = s.get("median_final_dist_m")
-        backend = s.get("backend")
-        dry = " dry-run" if backend == "real" and not real_live else ""
-        title = f"reach · {backend}{dry} · {policy}"
+        policy = Path(s.get("policy", "")).parent.name
+        title = f"⚙ reach · {'real arm' if live else 'sim'} · {policy}"
         if rate is not None:
             title += f" · {round(rate * n)}/{n}"
         if med is not None:
             title += f" · med {100 * med:.2f} cm"
-        flags = [k for k in ("settle", "dr") if s.get(k)]
-        if s.get("actuator_fit"):
-            flags.append(f"fit {Path(s['actuator_fit']).stem}")
-        ok = rate is not None and rate >= PASS_RATE
+        kind = "reach-real" if live else "reach-sim"
         out.append(
-            _thread(
-                f"harness:{d.name}",
-                title,
-                ZONE_REAL if real_live else ZONE_SIM,
-                d,
-                now_ms,
-                preview=" · ".join(
-                    [d.name, *([f"max_vel {s['max_vel']}"] if "max_vel" in s else []), *flags]
-                ),
-                model=policy,
-                hasError=not ok and not dry,  # a dry run never moves: 0 % is expected
-                prState="merged" if real_live and rate == 1.0 else None,
-            )
-        )
-    return out
-
-
-def survey_threads(runs: Path, now_ms: int) -> list[dict]:
-    out = []
-    for d in sorted((runs / "survey").glob("2*")):
-        s = _json(d / "summary.json")
-        if not d.is_dir() or s is None or not _recent(d, now_ms):
-            continue
-        live = s.get("backend") == "real" and bool(s.get("live"))
-        want = s.get("n_poses", 0) + 1  # + HOME
-        out.append(
-            _thread(
-                f"survey:{d.name}",
-                f"survey · {s.get('backend')} · {s.get('reached')}/{want} poses",
-                ZONE_REAL if live else ZONE_SIM,
-                d,
-                now_ms,
-                hasError=s.get("reached", 0) < want,
-            )
-        )
-    return out
-
-
-def gap_threads(runs: Path, now_ms: int) -> list[dict]:
-    out = []
-    for d in sorted((runs / "gap").glob("2*_*")):
-        if not d.is_dir() or not _recent(d, now_ms):
-            continue
-        m = _json(d / "meta.json")
-        fresh = now_ms - _mtime_ms(d) < 1000 * RUNNING_S
-        if m is None:
-            out.append(
-                _thread(
-                    f"gap:{d.name}",
-                    f"gap replay · {d.name}",
-                    ZONE_SIM,
+            (
+                kind,
+                _run(
+                    kind,
                     d,
-                    now_ms,
-                    running=fresh,
-                    archived=not fresh,
-                )
-            )
-            continue
-        live = m.get("backend") == "real" and bool(m.get("live"))
-        out.append(
-            _thread(
-                f"gap:{d.name}",
-                f"gap replay · {m.get('backend')} · {len(m.get('motions', []))} motions",
-                ZONE_REAL if live else ZONE_SIM,
-                d,
-                now_ms,
-                preview=", ".join(m.get("motions", [])),
-                hasError=not m.get("motions"),
+                    title,
+                    repo,
+                    model=policy,
+                    hasError=rate is None or rate < PASS_RATE,
+                    prState="merged" if live and rate == 1.0 else None,
+                ),
             )
         )
-    return out
-
-
-def training_threads(runs: Path, now_ms: int) -> list[dict]:
-    out = []
-    for d in sorted((runs / "ppo_reach").iterdir()) if (runs / "ppo_reach").exists() else []:
-        if not d.is_dir() or not _recent(d, now_ms):
+    for name, kind, meta, label in (
+        ("survey", "survey", "summary.json", "⚙ survey"),
+        ("gap", "gap", "meta.json", "⚙ gap replay"),
+        ("wristcal", "wristcal", "session.json", "⚙ wrist-camera calibration"),
+    ):
+        for d in sorted((runs / name).glob("2*")) if (runs / name).exists() else []:
+            if not d.is_dir() or not recent(d):
+                continue
+            m = _json(d / meta)
+            if m is None:
+                if fresh(d):
+                    out.append((kind, _run(kind, d, f"{label} · running", repo, running=True)))
+                continue
+            if m.get("backend") == "sim":
+                continue  # sim rehearsals: not news
+            out.append((kind, _run(kind, d, f"{label} · {d.name}", repo)))
+    ppo = runs / "ppo_reach"
+    for d in sorted(ppo.iterdir()) if ppo.exists() else []:
+        if not d.is_dir() or not recent(d):
             continue
         log = d.with_suffix(".log")
-        ev = _json(d / "eval_final.json") or {}
         done = (d / "reach.onnx").exists()
-        active = log if log.exists() else d
-        running = not done and now_ms - _mtime_ms(active) < 1000 * TRAINING_RUNNING_S
-        rate = ev.get("success_rate")
-        title = f"train · {d.name}" + (f" · eval {100 * rate:.0f}%" if rate is not None else "")
-        out.append(
-            _thread(
-                f"train:{d.name}",
-                title,
-                ZONE_SIM,
-                d,
-                now_ms,
-                model="PPO",
-                running=running,
-                hasError=not done and not running,
-            )
-        )
-    return out
-
-
-STAGE_ROW = re.compile(r"^\|\s*(\d+)\s+([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|")
-
-
-def stage_threads(runbook: Path, now_ms: int) -> list[dict]:
-    """One bot per row of the runbook's status table ("| 7 Extrinsics | 🟡 ... | evidence |")."""
-    if not runbook.exists():
-        return []
-    text = runbook.read_text()
-    section = text.split("## Status of this setup", 1)[-1]
-    out = []
-    for line in section.splitlines():
-        m = STAGE_ROW.match(line)
-        if not m:
+        running = not done and fresh(log if log.exists() else d, TRAINING_RUNNING_S)
+        if not (done or running):
             continue
-        num, name, status, evidence = m.groups()
-        status = status.replace("**", "")
-        out.append(
-            _thread(
-                f"stage:{num}",
-                f"{num} {name.strip()} · {status[:70]}",
-                ZONE_TWIN,
-                runbook,
-                now_ms,
-                preview=(evidence or status)[:200],
-                unread="🟡" in status,  # in progress: wants you
-                hasError="❌" in status,
-            )
-        )
+        ev = _json(d / "eval_final.json") or {}
+        rate = ev.get("success_rate")
+        title = f"⚙ train · {d.name}" + (f" · eval {100 * rate:.0f}%" if rate is not None else "")
+        out.append(("train", _run("train", d, title, repo, model="PPO", running=running)))
     return out
 
 
-def build_feed(repo: Path = REPO, now_ms: int | None = None) -> dict:
+def latest_runs(repo: Path, now_ms: int) -> list[dict]:
+    """Anything running, plus the latest finished run of each kind."""
+    latest: dict[str, dict] = {}
+    running = []
+    for kind, t in _run_candidates(repo, now_ms):
+        if t["running"]:
+            running.append(t)
+        elif kind not in latest or t["lastActivityAt"] > latest[kind]["lastActivityAt"]:
+            latest[kind] = t
+    return running + list(latest.values())
+
+
+# ---------------------------------------------------------------- repos + feed
+def discover_repos() -> list[Path]:
+    repos: set[Path] = set()
+    for root in SEARCH_ROOTS:
+        if root.is_dir():
+            repos.update(p.parent.parent for p in root.glob(f"*/{TASKS_FILE}"))
+    if CONFIG.exists():
+        try:
+            listed = (yaml.safe_load(CONFIG.read_text()) or {}).get("projects") or []
+        except yaml.YAMLError:
+            listed = []
+        repos.update(Path(p).expanduser() for p in listed if Path(p).expanduser().is_dir())
+    return sorted(repos)
+
+
+def build_feed(repos: list[Path] | None = None, now_ms: int | None = None) -> dict:
     now_ms = int(1000 * time.time()) if now_ms is None else now_ms
-    runs = repo / "runs"
-    threads = (
-        harness_threads(runs, now_ms)
-        + survey_threads(runs, now_ms)
-        + gap_threads(runs, now_ms)
-        + training_threads(runs, now_ms)
-        + stage_threads(repo / "docs" / RUNBOOK.name, now_ms)
-    )
-    for t in threads:
-        if t.get("prState") is None:
-            t.pop("prState", None)
-    return {"version": 1, "generatedAt": now_ms, "repo": str(repo), "threads": threads}
+    repos = discover_repos() if repos is None else repos
+    threads: list[dict] = []
+    for repo in repos:
+        threads += task_threads(repo, now_ms)
+        if (repo / "runs").is_dir():
+            threads += latest_runs(repo, now_ms)
+    return {
+        "version": 2,
+        "generatedAt": now_ms,
+        "repos": [str(r) for r in repos],
+        "threads": threads,
+    }
 
 
-def write_feed(path: Path = FEED, repo: Path = REPO) -> int:
-    feed = build_feed(repo)
+def write_feed(path: Path = FEED, repos: list[Path] | None = None) -> dict:
+    feed = build_feed(repos)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(feed, ensure_ascii=False))
     tmp.replace(path)  # atomic: the adapter never sees half a file
-    return len(feed["threads"])
+    return feed
 
 
 @app.command()
@@ -301,13 +309,15 @@ def main(
     watch: float = typer.Option(0.0, help="rewrite every N seconds (0 = once)"),
     out: Path = typer.Option(FEED, help="feed path (the adapter's default location)"),
 ) -> None:
-    n = write_feed(out)
-    typer.echo(f"{n} threads -> {out}")
+    feed = write_feed(out)
+    typer.echo(f"{len(feed['threads'])} bots from {len(feed['repos'])} repos -> {out}")
+    for r in feed["repos"]:
+        typer.echo(f"  {r}")
     while watch > 0:
         time.sleep(watch)
         try:
             write_feed(out)
-        except OSError as e:  # a run folder vanishing mid-scan is fine; try again next tick
+        except OSError as e:  # a folder vanishing mid-scan is fine; try again next tick
             typer.echo(f"skipped one refresh: {e}")
 
 

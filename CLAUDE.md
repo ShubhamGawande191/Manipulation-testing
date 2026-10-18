@@ -65,6 +65,13 @@ Hardware tests are marked `@pytest.mark.hw` and deselected by default (`addopts 
 
 `docs/DIGITAL-TWIN-RUNBOOK.md` is the step-by-step procedure (and status table) for building/validating the MuJoCo twin of a real SO-101 bench — calibration, teleop check, end-effector MJCF, joint map + live twin, cameras, extrinsics, scene, actuator fit. Keep its status table and lessons current when any of those stages change. The `digital-twin` skill points to it.
 
+## Lab board (`.colony/tasks.yaml`)
+
+`.colony/tasks.yaml` is the repo's to-do list, shown as bots in Bot Crossing (`uv run colony-feed`;
+see `integrations/bot-crossing/README.md`). Keep it current: when you start a task set
+`status: doing`, when you stop set `done` or `waiting` (with `waits_for`), and bump `updated`. Add
+anything that needs the user (hardware runs, measurements, data collection) as `owner: you`.
+
 ## Repo hygiene note
 
 The ~26 ad-hoc root experiment scripts (`test_*.py`, `patch*.py`, `req*.py`, `print_*.py`, `verify_wrist.py`) were deleted 2026-07-04 (they were throwaway probes for tuning gains/HSV/servo math; their tuned values already live in `tasks/`). Don't recreate probes in the repo root — put real functionality under `src/robot_manipulator/` and quick experiments outside the repo. `uv run pytest` only runs `tests/` (via `testpaths`).

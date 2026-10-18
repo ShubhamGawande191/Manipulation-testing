@@ -1,0 +1,110 @@
+# Lab board: what is next in this repo, shown as bots in Bot Crossing (`uv run colony-feed`).
+#   owner:  you | agent      status: todo | doing | waiting | done | failed
+#   you + todo = a `?` bot (needs you)   doing = hammering   failed = `!`   done = confetti, 2 days
+# Agents: set `doing` when you start a task, `done`/`waiting` when you stop, and bump `updated`.
+tasks:
+  # ---- camera + kinematic calibration (priority)
+  - id: wristcal-live
+    title: Run the automatic wrist-camera calibration on the arm
+    owner: you
+    status: todo
+    detail: >-
+      Fold the arm back by hand, then `uv run camcal-wrist run --backend real --live` (~4 min,
+      stay at the arm). The arm photographs the board from 24 planned viewpoints.
+    link: docs/DIGITAL-TWIN-RUNBOOK.md
+    updated: 2026-10-18
+  - id: wristcal-solve
+    title: Solve wrist calibration (board, camera mount, joint offsets) and validate
+    owner: agent
+    status: waiting
+    waits_for: wristcal-live
+    detail: "`uv run camcal-wrist solve runs/wristcal/<ts>`; held-out views; compare with the touch sessions."
+    updated: 2026-10-18
+  - id: ruler-check
+    title: Measure wrist_flex pivot to closed fingertip (model says 190 mm)
+    owner: you
+    status: todo
+    detail: Straight-line distance, centre of the wrist_flex servo horn to the fingertip tips.
+    updated: 2026-10-18
+  - id: apply-joint-offsets
+    title: Put the confirmed lift/elbow/wrist_flex offsets into config/sim2real.yaml
+    owner: agent
+    status: waiting
+    waits_for: two calibration sessions that agree
+    detail: Touch session says elbow about -9 deg. Needs a second, agreeing session before writing.
+    updated: 2026-10-18
+  - id: second-wristcal
+    title: Second wrist-camera calibration run (board moved) to confirm the offsets
+    owner: you
+    status: waiting
+    waits_for: wristcal-solve
+    updated: 2026-10-18
+  - id: scene-camera-check
+    title: Rebuild the bench scene with the calibrated camera; overlay sim vs real views
+    owner: agent
+    status: waiting
+    waits_for: wristcal-solve
+    updated: 2026-10-18
+  - id: real-reach-accuracy
+    title: Measure real fingertip accuracy of the reach policy after the joint fix
+    owner: you
+    status: waiting
+    waits_for: apply-joint-offsets
+    detail: Harness reach reports 0.42 cm, but that is in twin coordinates; the real error is unknown.
+    updated: 2026-10-18
+
+  # ---- twin + modelling
+  - id: actuator-backlash
+    title: Model gear backlash/deadband + encoder quantization; re-run the closed-loop table
+    owner: agent
+    status: todo
+    detail: No twin reproduces 'box calm, fit hunts' yet (gap closed-loop). Static sag is not the P loop.
+    updated: 2026-10-18
+  - id: reset-cup-scene
+    title: Add the auto-reset cup (assets/cup.stl) to the bench scene
+    owner: agent
+    status: waiting
+    waits_for: cup-pose
+    updated: 2026-10-18
+  - id: cup-pose
+    title: Place the reset cup where it will live and tell the agent (or photograph it)
+    owner: you
+    status: todo
+    updated: 2026-10-18
+
+  # ---- next projects
+  - id: ik-benchmark
+    title: IK benchmark - closed-form, DLS, NN-seeded hybrid, cuRobo (sim first)
+    owner: agent
+    status: todo
+    detail: Real-arm comparison only after the kinematic calibration. Check the cuRobo licence.
+    updated: 2026-10-18
+  - id: minilab-press-force
+    title: Kitchen-scale press-force measurements at MiniLab key positions
+    owner: you
+    status: todo
+    detail: Feeds the atlas (push force per location) and the key-press skill.
+    updated: 2026-10-18
+  - id: bimanual-port
+    title: Port the twin runbook to the bimanual SO-101s at work
+    owner: you
+    status: todo
+    link: docs/DIGITAL-TWIN-RUNBOOK.md
+    updated: 2026-10-18
+
+  # ---- recently done
+  - id: workspace-intrinsics
+    title: Workspace camera intrinsics (53 views, all 9 regions, 0.52 px)
+    owner: you
+    status: done
+    updated: 2026-10-18
+  - id: wristcal-tool
+    title: Automatic wrist-camera calibration tool (plan / run / solve)
+    owner: agent
+    status: done
+    updated: 2026-10-18
+  - id: lab-board
+    title: Lab board for Bot Crossing (tasks per repo, latest runs only)
+    owner: agent
+    status: done
+    updated: 2026-10-18
