@@ -6,8 +6,8 @@ from robot_manipulator.sim.model import JOINTS, load_model  # noqa: E402
 from robot_manipulator.sim.scene import build  # noqa: E402
 
 
-def test_bench_scene_keeps_follower_layout_and_adds_obstacles(tmp_path):
-    out = build(out=tmp_path.parent / "unused.xml") if False else build()
+def test_bench_scene_keeps_follower_layout_and_adds_obstacles():
+    out = build()
     m = load_model(out.name)
     assert m.nu == 6 and [m.actuator(i).name for i in range(6)] == list(JOINTS)
     names = {m.geom(i).name for i in range(m.ngeom)}
