@@ -23,6 +23,8 @@ def test_sim_run_then_compare_is_near_zero(tmp_path, monkeypatch):
     assert (run_dir / "steps_nominal.png").exists()
 
 
-def test_unknown_motion_is_rejected():
+def test_unknown_motion_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "RUNS_DIR", tmp_path)
     res = CliRunner().invoke(cli.app, ["run", "--backend", "sim", "--motion", "nope"])
     assert res.exit_code != 0
+    assert not any(tmp_path.iterdir())  # rejected before any run folder is created

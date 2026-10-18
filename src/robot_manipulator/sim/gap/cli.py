@@ -87,6 +87,9 @@ def _run(backend: str, motion: str, live: bool, max_vel: float, port: str, joint
     from robot_manipulator.sim.randomize import DRConfig
 
     lo, hi = joint_ranges(load_model(), JOINTS)
+    motions = _motions(motion)  # validate before creating the run folder
+    if backend not in ("sim", "real"):
+        raise typer.BadParameter("backend must be sim or real")
     out = RUNS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}_{backend}"
     out.mkdir(parents=True, exist_ok=True)
     if backend == "sim":
@@ -102,7 +105,7 @@ def _run(backend: str, motion: str, live: bool, max_vel: float, port: str, joint
         raise typer.BadParameter("backend must be sim or real")
     done: list[str] = []
     try:
-        for i, path in enumerate(_motions(motion)):
+        for i, path in enumerate(motions):
             m = np.clip(read_csv(path), lo + MARGIN, hi - MARGIN)
             if backend == "sim" and i == 0:
                 be.reset(m[0])
