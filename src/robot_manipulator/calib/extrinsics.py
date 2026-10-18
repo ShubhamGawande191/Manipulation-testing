@@ -5,9 +5,11 @@
 1. The camera image gives the board pose in the camera frame (``solvePnP`` with
    ``config/camera_intrinsics/<cam>.yaml`` and ``config/charuco_board.yaml``). The 4 outer grid
    corners are drawn numbered 1-4 in ``runs/extrinsics/<cam>_corners.png``.
-2. The operator guides the follower's fingertips (midpoint between the fingers = the EE site
-   ``gripperframe``) onto corners 1..4 and presses Enter at each. The calibrated joint map + twin FK
-   give each touch point, and Kabsch fits the board pose in the robot frame.
+2. The operator guides the follower's **closed** fingertips onto corners 1..4 and presses Enter
+   at each. The tool offers to close the gripper first (gripper motor only; the PincOpen isn't
+   back-drivable). The calibrated joint map + twin FK give each touch point, and Kabsch fits the
+   board pose in the robot frame. The touch point is the fingertip tip, ``TIP_OFFSET_M`` beyond
+   the EE site ``gripperframe`` along the tool axis.
 3. Chaining the two gives the camera pose in the robot frame. It's written to
    ``config/scene_bench.yaml`` (``workspace_camera.pos`` / ``xyaxes`` / ``fovy_deg``). Then rebuild
    the scene (``uv run scene build``) and compare views (``uv run scene render``).
@@ -29,6 +31,10 @@ from robot_manipulator.cameras import apply_controls, load_camera_config
 INTRINSICS_DIR = REPO / "config" / "camera_intrinsics"
 SCENE_CFG = REPO / "config" / "scene_bench.yaml"
 OUT_DIR = REPO / "runs" / "extrinsics"
+# closed PincOpen: the finger meshes reach 6.1 mm past `gripperframe` along the tool axis (model,
+# 2026-10-18). Touching with the tips puts the surface there, not at the site.
+TIP_OFFSET_M = 0.0061
+GRIPPER_OPEN_ABOVE = 15.0  # LeRobot 0..100; above this the fingertips are apart
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
@@ -64,6 +70,34 @@ def mujoco_xyaxes(R_rc: np.ndarray) -> list[float]:
     return [*R_rc[:, 0].tolist(), *(-R_rc[:, 1]).tolist()]
 
 
+def tip_point(model, data, q: np.ndarray) -> np.ndarray:
+    """Closed-fingertip tip in the robot frame for joint vector ``q`` (rad, CMD order)."""
+    import mujoco
+
+    from robot_manipulator.sim.model import EE_SITE, JOINTS, apply_joint_couplings, joint_qpos_adr
+
+    data.qpos[:] = model.qpos0
+    data.qpos[joint_qpos_adr(model, JOINTS)] = q
+    apply_joint_couplings(model, data)
+    mujoco.mj_kinematics(model, data)
+    tool_x = data.body("pinc_base").xmat.reshape(3, 3)[:, 0]  # palm -> fingertips
+    return data.site(EE_SITE).xpos + TIP_OFFSET_M * tool_x
+
+
+def _close_gripper(robot, closed: float) -> None:
+    """Close the gripper with its own motor only (arm torques stay off), then release it."""
+    import time
+
+    bus = robot.bus
+    bus.write("Goal_Position", "gripper", bus.sync_read("Present_Position")["gripper"])
+    bus.write("Torque_Enable", "gripper", 1)
+    try:
+        bus.write("Goal_Position", "gripper", closed)
+        time.sleep(1.5)
+    finally:
+        bus.write("Torque_Enable", "gripper", 0)  # not back-drivable: it stays closed
+
+
 def _grab(cam_name: str):
     import time
 
@@ -89,9 +123,10 @@ def main(
     robot_id: str = typer.Option("my_so101_follower"),
 ) -> None:
     import cv2
+    import mujoco
 
     from robot_manipulator.harness.units import JointMap
-    from robot_manipulator.sim.kinematics import FK
+    from robot_manipulator.sim.model import load_model
 
     intr_path = INTRINSICS_DIR / f"{cam_name}.yaml"
     if not intr_path.exists():
@@ -137,18 +172,25 @@ def main(
     from robot_manipulator.arm import build_follower_config
 
     jm = JointMap.from_yaml(REPO / "config" / "sim2real.yaml")
-    fk = FK()
+    model = load_model()
+    mdata = mujoco.MjData(model)
     robot = SOFollower(build_follower_config(port=port, robot_id=robot_id, cameras=False))
     robot.bus.connect()
     touched = []
     try:
-        if any(robot.bus.sync_read("Torque_Enable", normalize=False).values()):
+        torque = robot.bus.sync_read("Torque_Enable", normalize=False)
+        if any(v for k, v in torque.items() if k != "gripper"):
             raise RuntimeError("follower torque is on: run `uv run teleop --park-only` first")
+        grip = robot.bus.sync_read("Present_Position")["gripper"]
+        if grip > GRIPPER_OPEN_ABOVE:
+            input(f"Gripper is open ({grip:.0f}). Enter closes it (gripper motor only)… ")
+            _close_gripper(robot, jm.gripper.lerobot_closed)
+            typer.echo(f"  gripper now {robot.bus.sync_read('Present_Position')['gripper']:.0f}")
         for k in range(1, 5):
-            input(f"Put the fingertip midpoint on corner {k} (see the image), then press Enter… ")
+            input(f"Put the closed fingertips on corner {k} (see the image), then press Enter… ")
             pos = robot.bus.sync_read("Present_Position")
             q = jm.lerobot_to_sim({f"{j}.pos": float(v) for j, v in pos.items()})
-            touched.append(fk.ee_pos(q))
+            touched.append(tip_point(model, mdata, q))
             typer.echo(f"  corner {k}: robot frame {np.round(touched[-1], 4).tolist()} m")
     finally:
         robot.bus.disconnect(disable_torque=False)

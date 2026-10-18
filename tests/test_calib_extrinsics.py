@@ -37,3 +37,16 @@ def test_mujoco_axes_convention():
     x, y = xy[:3], xy[3:]
     z = np.cross(x, y)
     assert z == pytest.approx([0, 0, 1])  # MuJoCo looks along -z = straight down
+
+
+def test_tip_point_is_past_the_ee_site_along_the_tool():
+    mujoco = pytest.importorskip("mujoco")
+    from robot_manipulator.calib.extrinsics import TIP_OFFSET_M, tip_point
+    from robot_manipulator.sim.kinematics import FK
+    from robot_manipulator.sim.model import load_model
+
+    m = load_model()
+    q = np.array([0.0, -1.0, 1.2, 1.0, 0.0, 0.0])  # tool pointing roughly down
+    tip = tip_point(m, mujoco.MjData(m), q)
+    site = FK(m).ee_pos(q)
+    assert abs(np.linalg.norm(tip - site) - TIP_OFFSET_M) < 1e-9
