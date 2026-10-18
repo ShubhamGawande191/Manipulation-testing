@@ -33,10 +33,17 @@ tasks:
     waits_for: two calibration sessions that agree
     detail: Touch session says elbow about -9 deg. Needs a second, agreeing session before writing.
     updated: 2026-10-18
+  - id: reprint-board
+    title: Reprint the ChArUco board (100 % scale, matte) and paste it flat on a rigid backing
+    owner: you
+    status: todo
+    detail: Same layout (5x7, DICT_7X7_50). Re-measure one square; if not 40 mm, update config/charuco_board.yaml.
+    updated: 2026-10-18
   - id: second-wristcal
     title: Second wrist-camera calibration run (board moved) to confirm the offsets
     owner: you
-    status: todo
+    status: waiting
+    waits_for: reprint-board
     updated: 2026-10-18
     detail: "Board flat on something rigid (not paper on the table rim), moved ~10 cm; `uv run camcal-wrist plan` then `run --backend real --live`. Confirms the offsets before they go into sim2real.yaml."
   - id: scene-camera-check
