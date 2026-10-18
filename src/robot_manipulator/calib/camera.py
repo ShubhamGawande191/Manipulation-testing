@@ -110,7 +110,12 @@ def calibrate(board, views: list[np.ndarray], size: tuple[int, int]) -> dict:
 
 
 @app.command()
-def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> None:
+def capture(
+    name: str,
+    target_views: int = 25,
+    max_seconds: float = 300.0,
+    append: bool = typer.Option(False, help="keep existing views and add target_views more"),
+) -> None:
     """Preview + auto-save board views for camera ``name`` (q / Esc to stop early).
 
     With a headless OpenCV build (no GUI), progress goes to the terminal and the annotated live
@@ -124,8 +129,12 @@ def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> No
     board, _ = make_board()
     out = VIEWS_DIR / name
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("view_*.png"):
-        old.unlink()
+    start = 0
+    if append:
+        start = len(list(out.glob("view_*.png")))
+    else:
+        for old in out.glob("view_*.png"):
+            old.unlink()
     cap = cv2.VideoCapture(cam["path"])
     saved: list[tuple[np.ndarray, float]] = []
     t0, last_save, last_preview = time.monotonic(), 0.0, 0.0
@@ -143,7 +152,7 @@ def capture(name: str, target_views: int = 25, max_seconds: float = 300.0) -> No
                 cv2.aruco.drawDetectedCornersCharuco(show, cc, ci)
                 now = time.monotonic()
                 if now - last_save > 0.7 and is_new_view(saved, cc):
-                    cv2.imwrite(str(out / f"view_{len(saved):02d}.png"), gray)
+                    cv2.imwrite(str(out / f"view_{start + len(saved):02d}.png"), gray)
                     pts = cc.reshape(-1, 2)
                     saved.append((pts.mean(0), float(pts.std(0).mean())))
                     last_save = now
