@@ -191,7 +191,14 @@ uv run camcal intrinsics <name>              # -> config/camera_intrinsics/<name
 
 ## 7. Camera extrinsics (camera → robot base) — *in progress*
 
-The plan is a touch method that needs no extra hardware:
+```bash
+uv run camcal capture workspace          # 15–25 board views, varied tilt and position
+uv run camcal intrinsics workspace       # -> config/camera_intrinsics/workspace.yaml
+uv run camcal-extrinsics workspace       # board flat on the table; touch corners 1-4 (torque off)
+uv run scene build && uv run scene render
+```
+
+A touch method that needs no extra hardware:
 1. Lay the board flat on the table where the camera sees it.
 2. With follower torque off, touch 4 or more known board corners with the **closed gripper tip**. At
    each touch, record FK of `gripperframe` through the calibrated joint map. Fit with Kabsch to get
@@ -205,6 +212,14 @@ The plan is a touch method that needs no extra hardware:
   transform** for the shared MJCF.
 
 ## 8. Scene objects (fixtures, reset rig) — *in progress*
+
+- `uv run scene build` writes `sim/assets/so101/scene_bench.xml` from `config/scene_bench.yaml`:
+  table, overhead column, workspace camera (from §7 once calibrated, a placeholder before that), and
+  the leader as static geoms at its stow pose. `uv run scene render` saves the sim view of
+  `workspace_cam` for comparison with the real snapshot.
+- Measure the layout in the robot frame (x forward, y left from the follower base). Here: column
+  centre 11.45 cm to the follower's left, leader another 11.45 cm beyond it, follower centre
+  22.5 cm from the right table edge.
 
 - Source mesh: `assets/cup.stl` (mm), the auto-reset chute. It is a 100 mm cylinder with an internal
   ramp and a side opening onto a rimmed tray (~180×160 mm); overall 300×225×125 mm.
@@ -263,6 +278,15 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
   short. Validate parking paths in sim from task end poses, not just from HOME.
 - **Lesson (one sampler):** the harness and the trainer must share one target sampler. When they
   differed, harness success dropped from 99 % to 78 %.
+- **Oscillation guard** (`harness/skill.py: Oscillation`, on by default for `--backend real`):
+  fails the skill when a joint reverses direction ≥ 8 times within 1 s while staying within
+  0.05 rad. A hunting policy stops in about 1–2 s instead of shaking for the whole episode. Tuned
+  on real traces: 20/20 hunting episodes caught, 0/60 calm ones flagged.
+  - **Lesson (sim dithers more than the arm):** the same calm policy that never trips the guard on
+    the real arm trips it in 5/30 nominal-sim settle episodes. In sim, all joints dither at the goal
+    (peak-to-peak median 38°), against 1 flagged window on the real arm. The nominal twin has far
+    less friction than the arm (the actuator fit puts it at 8–18×). So the guard is real-only by
+    default (`--oscillation-guard` forces it in sim), and friction belongs in the next actuator fit.
 
 
 ## 11. Telemetry + workspace atlas (what the arm can do where)
@@ -315,8 +339,8 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 4 Robot model | ✅ PincOpen variant (default) | 0.212 kg past wrist; collision near fold untrusted |
 | 5 Joint map | ✅ `calibrated: true` | live twin, all signs +1 / offsets 0, gripper closed ↔ 7 |
 | 6 Cameras | 🟡 stable paths + locked exposure done; **intrinsics: capture pending** | `cam-setup` mean 114 |
-| 7 Extrinsics | ⏳ needs board square size + touch session | |
-| 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
+| 7 Extrinsics | 🟡 tool ready (`camcal-extrinsics`); needs intrinsics + board square size + touch session | |
+| 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
 | 9 Actuator fit | ✅ first fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
 | 11 Atlas + telemetry | 🟡 prior built; survey 21/21 poses; 1702 static samples; lift load r=0.78 | `runs/atlas/`; `runs/telemetry/` |

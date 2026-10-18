@@ -257,3 +257,20 @@ Same 20 targets, `--settle --max-vel 1.0`, leader stowed (taught pose, pan −77
   torque / effective stiffness, and the survey already logs held poses with measured error. Then
   fix kp and fit only damping/friction/armature/delay on chirps. Validate on a *closed-loop*
   criterion (sim-vs-real settle of a fixed policy), not only open-loop replay.
+
+## 2026-10-18 — oscillation guard (`Oscillation` end condition)
+
+- Fails a skill when any arm joint reverses ≥ 8 times within 1 s with net travel < 0.05 rad
+  (|dq| < 0.05 rad/s counts as still). It's the first end condition of the reach skill, ahead of
+  `EEReached`/`TimeLimit`.
+- Tuned on real telemetry: the `pinc_fit_3M` settle run (20/20 episodes hunting, ptp median 12.7°)
+  is caught in all 20; the `pinc_box_3M` runs (60 calm episodes) give 0 false alarms.
+- **Sim false alarms:** nominal sim, `pinc_box_3M`, 30 targets, `--settle --max-vel 1.0`: 25/30
+  with the guard against 30/30 without. In sim the calm policy dithers on every joint at the goal
+  (flagged windows: pan 29, elbow 32, lift 19, wrist_flex 21, wrist_roll 11; ptp median 38°). On the
+  real arm the same policy had 1 window. An amplitude threshold can't separate sim dither from real
+  hunting. This points to the nominal twin's low friction (the fit says real friction is 8–18×).
+- **Decision:** the guard defaults to on for `--backend real` and off for sim/fake
+  (`--oscillation-guard/--no-oscillation-guard` overrides; the run summary records it). Sim
+  re-check without it: 30/30, median 0.42 cm.
+

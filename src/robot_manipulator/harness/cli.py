@@ -46,6 +46,7 @@ def run_reach(
     joint_map_path: Path = Path("config/sim2real.yaml"),
     out: Path | None = None,
     settle: bool = False,
+    oscillation_guard: bool | None = None,
 ) -> dict[str, Any]:
     """Run `n_episodes` home+reach episodes and write episodes.parquet, summary.json and traj/."""
     from robot_manipulator.core.episode_log import EpisodeRecord, write_records
@@ -133,6 +134,7 @@ def run_reach(
             "the policy integrates at the cap, but expect degraded behaviour",
             err=True,
         )
+    use_guard = (backend == "real") if oscillation_guard is None else oscillation_guard
     try:
         for i, target in enumerate(targets):
             clock = WallClock() if backend == "real" else SimClock()
@@ -150,6 +152,7 @@ def run_reach(
             else:
                 be = real_be
 
+            guard = [Oscillation()] if use_guard else []
             safety = SafetyFilter(
                 lo=lo6, hi=hi6, margin=SAFETY_MARGIN, max_vel=max_vel, clock=clock
             )
@@ -163,10 +166,15 @@ def run_reach(
                 "reach",
                 policy,
                 # settle: no early stop, run the full episode and judge the final pose (accuracy)
-                # Oscillation first: a hunting policy stops within ~1-2 s instead of shaking on
-                [Oscillation(), TimeLimit(EP_SECONDS)]
-                if settle
-                else [Oscillation(), EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
+                # Oscillation guard first (real arm by default): a hunting policy stops within
+                # ~1-2 s instead of shaking on. Off in sim by default: the nominal twin is livelier
+                # than the real arm and the same calm policy dithers there (2026-10-18).
+                guard
+                + (
+                    [TimeLimit(EP_SECONDS)]
+                    if settle
+                    else [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)]
+                ),
                 hz=HZ,
             )
             t_ep = time.monotonic()
@@ -249,6 +257,7 @@ def run_reach(
         "median_final_dist_m": float(np.median([e["final_dist_m"] for e in episodes])),
         "p90_final_dist_m": float(np.percentile([e["final_dist_m"] for e in episodes], 90)),
         "settle": bool(settle),
+        "oscillation_guard": bool(use_guard),
         "out": str(run_dir),
         "episodes": episodes,
     }
@@ -292,6 +301,11 @@ def reach_cmd(
     stow_leader: bool = typer.Option(
         True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
     ),
+    oscillation_guard: bool | None = typer.Option(
+        None,
+        "--oscillation-guard/--no-oscillation-guard",
+        help="stop a hunting policy early (default: on for real, off for sim/fake)",
+    ),
 ) -> None:
     targets = None
     n_episodes = 1
@@ -317,6 +331,7 @@ def reach_cmd(
             joint_map,
             out,
             settle,
+            oscillation_guard,
         )
     brief = {k: v for k, v in summary.items() if k != "episodes"}
     typer.echo(json.dumps(brief, indent=2))
@@ -336,6 +351,7 @@ def _run_reach_cmd(
     joint_map,
     out,
     settle=False,
+    oscillation_guard=None,
 ):
     return run_reach(
         backend=backend,
@@ -351,6 +367,7 @@ def _run_reach_cmd(
         joint_map_path=joint_map,
         out=out,
         settle=settle,
+        oscillation_guard=oscillation_guard,
     )
 
 
