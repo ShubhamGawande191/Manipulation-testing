@@ -166,3 +166,8 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   cap): **5/5**, all within 1.9 cm, 0.8–2.3 s (`runs/harness/20261018-120930`). The previously
   missed far-right target reached in 2.3 s. The integration fix alone closed the gap; the
   cap-DR retrain (`runs/ppo_reach/pinc_cap_3M`) is for robustness at other caps.
+- **20-target run** (`pinc_box_3M`, `--max-vel 0.5`, `runs/harness/20261018-123358`): **20/20**, mean
+  2.1 s to reach. While **parking** afterwards, the elbow stalled 33° short. The staged park folded the
+  elbow while the shoulder was still raised (last reach ended at lift ≈ −3°), and sim confirms the
+  fingers hit the table at ~47° of the fold. Fixed: parking now glides to HOME first (all joints), then
+  folds. Parking ticks are logged to telemetry (`event="park"`).

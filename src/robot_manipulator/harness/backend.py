@@ -302,11 +302,26 @@ class LeRobotBackend:
                 from robot_manipulator.hw.follower import (
                     REST_ARM,
                     bus_pos,
+                    home_lerobot,
                     park_and_release,
                 )
 
                 here = bus_pos(self._robot)
-                park_and_release(self._robot, np.r_[REST_ARM, here[-1]], speed=30.0, hz=50.0)
+
+                def log_tick(cmd: np.ndarray) -> None:
+                    if self.telemetry is not None:
+                        self.telemetry.record(
+                            bus_pos(self._robot), cmd, bus=self._robot.bus, event="park"
+                        )
+
+                park_and_release(
+                    self._robot,
+                    np.r_[REST_ARM, here[-1]],
+                    speed=30.0,
+                    hz=50.0,
+                    via=home_lerobot(self.joint_map),
+                    on_tick=log_tick,
+                )
         finally:
             self._robot.bus.disconnect(disable_torque=False)
             if self.telemetry is not None:

@@ -112,7 +112,9 @@ def connect_follower(port: str, robot_id: str, pid: dict[str, tuple[int, int, in
     return robot, start
 
 
-def glide(robot, cmd: np.ndarray, target: np.ndarray, speed: float, hz: float) -> np.ndarray:
+def glide(
+    robot, cmd: np.ndarray, target: np.ndarray, speed: float, hz: float, on_tick=None
+) -> np.ndarray:
     """Velocity-capped move of the commanded pose to ``target``; returns the final command.
 
     Once the command arrives, waits at most ``SETTLE_S`` for the joints to follow. A joint that
@@ -125,6 +127,8 @@ def glide(robot, cmd: np.ndarray, target: np.ndarray, speed: float, hz: float) -
     while not np.allclose(cmd, target):
         cmd = cap.clamp_step(cmd, target, dt)
         send_goal(robot, cmd)
+        if on_tick is not None:
+            on_tick(cmd)  # e.g. telemetry; must be quick
         time.sleep(dt)
     settle_end = time.monotonic() + SETTLE_S
     err = bus_pos(robot) - target
@@ -137,9 +141,22 @@ def glide(robot, cmd: np.ndarray, target: np.ndarray, speed: float, hz: float) -
     return cmd
 
 
-def park_and_release(robot, target: np.ndarray, speed: float, hz: float) -> None:
-    """Glide to ``target`` (light joints first, shoulder_lift last), then drop torque joint by
-    joint. Ctrl+C is ignored while this runs: an interrupted park leaves the arm mid-air."""
+def park_and_release(
+    robot,
+    target: np.ndarray,
+    speed: float,
+    hz: float,
+    via: np.ndarray | None = None,
+    on_tick=None,
+) -> None:
+    """Glide to ``via`` with all joints together (if given), then to ``target`` one joint at a
+    time (light joints first, shoulder_lift last), then drop torque joint by joint. Ctrl+C is
+    ignored while this runs: an interrupted park leaves the arm mid-air.
+
+    Pass ``via`` = HOME (``home_lerobot``) whenever the arm may end anywhere. Folding the elbow
+    while the shoulder was still raised drove the fingers into the table: elbow stalled 33° short
+    after a 20-reach run, 2026-10-18. HOME is collision-free from the table workspace, and HOME
+    to rest is small moves."""
     import signal
 
     def _hold_on(signum, frame):  # noqa: ARG001
@@ -148,11 +165,26 @@ def park_and_release(robot, target: np.ndarray, speed: float, hz: float) -> None
     previous = signal.signal(signal.SIGINT, _hold_on)
     try:
         cmd = bus_pos(robot)
+        if via is not None:
+            cmd = glide(robot, cmd, np.r_[np.asarray(via)[:5], cmd[5]], speed, hz, on_tick)
         for _name, wp in stage_targets(cmd, target, tuple(reversed(STAGE_ORDER))):
-            cmd = glide(robot, cmd, wp, speed, hz)
+            cmd = glide(robot, cmd, wp, speed, hz, on_tick)
         for motor in reversed(STAGE_ORDER):
             robot.bus.disable_torque(motor)
             time.sleep(0.1)
         console.print("[green]parked, torque off[/]")
     finally:
         signal.signal(signal.SIGINT, previous)
+
+
+def home_lerobot(joint_map) -> np.ndarray:
+    """HOME (the harness/training home pose) in LeRobot units [deg x5, gripper 0..100], via the
+    sim2real joint map, clipped 0.05 rad inside the joint limits like the SafetyFilter."""
+    from robot_manipulator.sim.envs.reach import GRIPPER_HOLD, HOME_ARM
+    from robot_manipulator.sim.model import JOINTS as SIM_JOINTS
+    from robot_manipulator.sim.model import joint_ranges, load_model
+
+    lo, hi = joint_ranges(load_model(), SIM_JOINTS)
+    home = np.clip(np.r_[HOME_ARM, GRIPPER_HOLD], lo + 0.05, hi - 0.05)
+    vals = joint_map.sim_to_lerobot(home)
+    return np.array([vals[f"{j}.pos"] for j in JOINTS], dtype=np.float64)

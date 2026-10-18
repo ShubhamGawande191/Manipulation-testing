@@ -158,6 +158,15 @@ def _park_leader(leader, speed: float, hz: float) -> None:
     console.print("[green]leader parked, torque off[/]")
 
 
+def _home_via() -> np.ndarray:
+    """HOME in LeRobot units: parking goes through it (see hw.follower.park_and_release)."""
+    from robot_manipulator.harness.units import JointMap
+    from robot_manipulator.hw.follower import home_lerobot
+    from robot_manipulator.hw.telemetry import REPO as _REPO
+
+    return home_lerobot(JointMap.from_yaml(_REPO / "config" / "sim2real.yaml"))
+
+
 def _print_summary(summary: dict[str, dict[str, float]]) -> None:
     table = Table(title="Tracking (cmd − present) and load")
     for col in ("joint", "mean|e|", "p95|e|", "max|e|", "steady e", "load mean", "load max"):
@@ -205,7 +214,7 @@ def main(
         robot, here = _connect_follower(follower_port, follower_id, overrides)
         try:
             console.print("present:", np.round(here, 1), "→ rest arm", REST_ARM)
-            _park_and_release(robot, np.r_[REST_ARM, here[-1]], stage_speed, hz)
+            _park_and_release(robot, np.r_[REST_ARM, here[-1]], stage_speed, hz, via=_home_via())
         finally:
             robot.bus.disconnect(disable_torque=False)
         return
@@ -301,7 +310,7 @@ def main(
             try:
                 if park:
                     console.print("parking at start pose…")
-                    _park_and_release(robot, start, stage_speed, hz)
+                    _park_and_release(robot, start, stage_speed, hz, via=_home_via())
                 else:
                     for motor in reversed(STAGE_ORDER):
                         robot.bus.disable_torque(motor)

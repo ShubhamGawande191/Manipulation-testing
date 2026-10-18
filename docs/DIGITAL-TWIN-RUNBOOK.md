@@ -246,6 +246,9 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
   the SafetyFilter command box. The first live run failed HOME 5/5. The arm itself was within 2°,
   but the gripper target sat on the joint limit and the filter's 0.05 rad margin made it unreachable
   within HOME_TOL. In sim it passed by a hair, so test with real-sized errors.
+- **Lesson (parking path):** park **via HOME**. A staged fold that starts wherever the task ended
+  can sweep the tool into the table: the elbow folded while the shoulder was raised and stalled 33°
+  short. Validate parking paths in sim from task end poses, not just from HOME.
 - **Lesson (one sampler):** the harness and the trainer must share one target sampler. When they
   differed, harness success dropped from 99 % to 78 %.
 
@@ -303,5 +306,5 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 7 Extrinsics | ⏳ needs board square size + touch session | |
 | 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
 | 9 Actuator fit | ⏳ | |
-| 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 5/5 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-120930`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
+| 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
 | 11 Atlas + telemetry | 🟡 prior built; telemetry logging live; survey ready to run | `runs/atlas/`; `runs/telemetry/` |
