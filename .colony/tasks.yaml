@@ -7,7 +7,7 @@ tasks:
   - id: wristcal-live
     title: Run the automatic wrist-camera calibration on the arm
     owner: you
-    status: todo
+    status: done
     detail: >-
       Fold the arm back by hand, then `uv run camcal-wrist run --backend real --live` (~4 min,
       stay at the arm). The arm photographs the board from 24 planned viewpoints.
@@ -16,9 +16,9 @@ tasks:
   - id: wristcal-solve
     title: Solve wrist calibration (board, camera mount, joint offsets) and validate
     owner: agent
-    status: waiting
+    status: done
     waits_for: wristcal-live
-    detail: "`uv run camcal-wrist solve runs/wristcal/<ts>`; held-out views; compare with the touch sessions."
+    detail: "23/24 views, 5.8 px (held-out 5.9). elbow -5.5±0.8, wflex -4.6±0.5, lift +7.9±1.8 (not trusted). Workspace camera written; overlay matches the arm."
     updated: 2026-10-18
   - id: ruler-check
     title: Measure wrist_flex pivot to closed fingertip (model says 190 mm)
@@ -36,13 +36,13 @@ tasks:
   - id: second-wristcal
     title: Second wrist-camera calibration run (board moved) to confirm the offsets
     owner: you
-    status: waiting
-    waits_for: wristcal-solve
+    status: todo
     updated: 2026-10-18
+    detail: "Board flat on something rigid (not paper on the table rim), moved ~10 cm; `uv run camcal-wrist plan` then `run --backend real --live`. Confirms the offsets before they go into sim2real.yaml."
   - id: scene-camera-check
     title: Rebuild the bench scene with the calibrated camera; overlay sim vs real views
     owner: agent
-    status: waiting
+    status: done
     waits_for: wristcal-solve
     updated: 2026-10-18
   - id: real-reach-accuracy

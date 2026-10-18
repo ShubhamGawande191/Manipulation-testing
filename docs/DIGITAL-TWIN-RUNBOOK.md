@@ -207,6 +207,20 @@ of every board corner. Held-out views validate it. The workspace camera pose fol
 view of the board. Pan and wrist_roll offsets aren't observable this way (pan moves everything
 rigidly; roll is absorbed by the camera mount).
 
+- **First real run (2026-10-18, `runs/wristcal/20261018-204825_real`):** 24/24 viewpoints, 23
+  usable. Bundle adjustment 10.5 → 5.8 px with joint offsets (held-out 5.9 px): elbow
+  −5.5 ± 0.8°, wrist_flex −4.6 ± 0.5°, lift +7.9 ± 1.8°. The touch session agrees on wrist_flex
+  (−4.2°) and the elbow sign (−9.5°), but not on lift, and applying lift makes the touch data
+  worse. So nothing goes into `sim2real.yaml` until a second session (board moved, rigid) agrees.
+  The camera mount came out 5.6 cm from the photo estimate. Workspace camera at
+  (5.7, 9.4, 49.7) cm; the sim overlay lands on the real arm within a few px.
+- **Lesson (residual is per pose):** per board corner the residuals are small and even, so the
+  board is fine. Per view they're offset by ~3–15 px, i.e. ~0.5° / 2 mm of pose error per arm
+  pose (joint play, link flex). That is roughly the arm's absolute accuracy floor.
+- **Lesson (corner threshold):** the closed fingers hide the board's near rows in the wrist image.
+  The 12-corner capture threshold rejected 13 good views; the BA uses views with ≥ 8 corners. The
+  overhead PnP pools corners from every frame of the session (the board never moves; the arm hides
+  a different part each time).
 - **Lesson (touching at full stretch):** with the board where the overhead camera sees it whole,
   the far corners were at the edge of the arm's reach, and touching them in several poses wasn't
   possible. The wrist-camera method only needs the board visible, from wherever the arm reaches
@@ -393,7 +407,7 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 4 Robot model | ✅ PincOpen variant (default) | 0.212 kg past wrist; collision near fold untrusted |
 | 5 Joint map | ✅ `calibrated: true` | live twin, all signs +1 / offsets 0, gripper closed ↔ 7 |
 | 6 Cameras | ✅ stable paths, locked exposure, intrinsics 53 views / 9 regions, rms 0.52 px | `config/camera_intrinsics/workspace.yaml` |
-| 7 Extrinsics | 🟡 blocked on arm kinematics: same corner touched two ways disagrees by 17–27 mm in twin FK; joint-offset fit says elbow ≈ −9° (lift/wflex −4°). Next: wrist→fingertip ruler check (model 190 mm) + 16-touch session | `runs/extrinsics/session2_2percorner.json` |
+| 7 Extrinsics | ✅ workspace camera via automatic wrist-camera calibration (overlay matches); 🟡 joint offsets fitted (elbow −5.5°, wflex −4.6°), not applied until a 2nd session agrees | `config/extrinsics/workspace.yaml`; `runs/wristcal/20261018-204825_real` |
 | 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
 | 9 Actuator fit | 🟡 open-loop OK, **closed-loop not yet**: no twin (nominal / v2 / sag-pinned v3) reproduces 'box calm, fit hunts' (`gap closed-loop`). First fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |

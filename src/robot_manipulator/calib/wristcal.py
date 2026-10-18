@@ -57,6 +57,7 @@ MAX_REACH = 0.21  # shoulder_lift axis to wrist_flex axis, m (stretched = 0.251)
 MIN_CLEAR = 0.07  # fingertip / camera height above the table, m
 FINGER_V = 0.62 * IMG_H  # closed fingers cover the bottom-centre of the wrist image below this
 MIN_CORNERS = 14  # of the 24 inner ChArUco corners, visible per planned view
+BA_MIN_CORNERS = 8  # detected corners for a view to enter the bundle adjustment
 LEADER_Y = 0.17  # nothing of the follower beyond this (the leader stows at y ~ 0.23+)
 # wrist_roll kept within +-60 deg of the arm's natural roll (-80 deg here: gripper upright), so the
 # gripper and camera cables are never wound round the wrist
@@ -550,19 +551,20 @@ def solve_cmd(
         g = cv2.imread(str(session_dir / v["wrist"]), cv2.IMREAD_GRAYSCALE)
         if g is None:
             continue
-        cc, ci = detect(board, g)
-        if cc is not None and len(ci) >= 8:
+        # the closed fingers hide the board's near rows: 8 corners per view are plenty for the BA
+        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
+        if cc is not None:
             views.append(g)
             qs.append(np.array(v["q_rad"]))
     typer.echo(f"{len(views)}/{len(s['views'])} wrist views with the board")
     if len(views) < 8:
         raise typer.Exit(1)
-    intr = calibrate(board, views, (IMG_W, IMG_H))
+    intr = calibrate(board, views, (IMG_W, IMG_H))  # uses views with >= 12 corners
     K, dist = np.array(intr["camera_matrix"]), np.array(intr["dist_coeffs"])
     typer.echo(f"wrist intrinsics: rms {intr['rms_px']:.2f} px, fx {K[0, 0]:.0f}")
     obs = []
     for g in views:
-        cc, ci = detect(board, g)
+        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
         P, uv = board.matchImagePoints(cc, ci)
         und = cv2.undistortPoints(uv.reshape(-1, 1, 2), K, dist, P=K).reshape(-1, 2)
         obs.append((P.reshape(-1, 3).astype(float), und))
@@ -614,17 +616,25 @@ def _write_results(session_dir: Path, fit: dict, intr: dict, board) -> None:
     )
     ws_intr = yaml.safe_load((REPO / "config" / "camera_intrinsics" / "workspace.yaml").read_text())
     Kw, dw = np.array(ws_intr["camera_matrix"]), np.array(ws_intr["dist_coeffs"])
-    best = None
+    # the board never moves during a session, but the arm hides a different part of it in each
+    # overhead frame: pool every frame's corners (median pixel per corner id) for one PnP
+    seen: dict[int, list[np.ndarray]] = {}
     for f in sorted(session_dir.glob("ws_*.png")):
         g = cv2.imread(str(f), cv2.IMREAD_GRAYSCALE)
-        cc, ci = detect(board, g)
-        if cc is not None and (best is None or len(ci) > best[0]):
-            best = (len(ci), cc, ci, f.name)
-    if best is None:
-        typer.echo("workspace camera never saw the board; pose not written")
+        cc, ci = detect(board, g, min_corners=4)
+        if cc is not None:
+            for c, i in zip(cc.reshape(-1, 2), ci.ravel()):
+                seen.setdefault(int(i), []).append(c)
+    if len(seen) < 8:
+        typer.echo(f"workspace camera saw only {len(seen)} board corners; pose not written")
         return
-    P, uv = board.matchImagePoints(best[1], best[2])
+    ids = np.array(sorted(seen))
+    uv = np.array([np.median(seen[i], axis=0) for i in ids], dtype=np.float32)
+    P, uv = board.matchImagePoints(uv.reshape(-1, 1, 2), ids.reshape(-1, 1))
     ok, rvec, tvec = cv2.solvePnP(P, uv, Kw, dw)
+    proj, _ = cv2.projectPoints(P, rvec, tvec, Kw, dw)
+    pnp_rms = float(np.sqrt(np.mean(np.sum((proj - uv) ** 2, axis=-1))))
+    best = (len(ids), None, None, f"{len(ids)} pooled corners, PnP {pnp_rms:.2f} px")
     R_cb, _ = cv2.Rodrigues(rvec)
     p, R_rc = camera_in_robot(R_cb, tvec.ravel(), fit["R_robot_board"], fit["t_robot_board"])
     fovy = float(np.degrees(2 * np.arctan(ws_intr["image_size"][1] / 2 / Kw[1, 1])))
@@ -632,8 +642,8 @@ def _write_results(session_dir: Path, fit: dict, intr: dict, board) -> None:
         "pos": [round(float(v), 4) for v in p],
         "xyaxes": [round(float(v), 5) for v in mujoco_xyaxes(R_rc)],
         "fovy_deg": round(fovy, 2),
-        "source": f"camcal-wrist {datetime.now():%Y-%m-%d} ({best[3]}, {best[0]} corners; "
-        f"wrist BA rms {fit['rms_px']:.2f} px)",
+        "source": f"camcal-wrist {datetime.now():%Y-%m-%d} ({best[3]}; "
+        f"wrist BA rms {fit['rms_px']:.2f} px; joint offsets fitted, not applied)",
     }
     EXTRINSICS_DIR.mkdir(parents=True, exist_ok=True)
     (EXTRINSICS_DIR / "workspace.yaml").write_text(

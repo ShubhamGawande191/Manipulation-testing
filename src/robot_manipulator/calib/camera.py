@@ -47,12 +47,12 @@ def make_board(cfg_path: Path = BOARD_CFG):
     return board, cfg
 
 
-def detect(board, gray: np.ndarray):
-    """ChArUco corners/ids, or (None, None) when the board is not usable."""
+def detect(board, gray: np.ndarray, min_corners: int = MIN_CORNERS):
+    """ChArUco corners/ids, or (None, None) when fewer than ``min_corners`` are seen."""
     import cv2
 
     cc, ci, _, _ = cv2.aruco.CharucoDetector(board).detectBoard(gray)
-    if ci is None or len(ci) < MIN_CORNERS:
+    if ci is None or len(ci) < min_corners:
         return None, None
     return cc, ci
 
