@@ -194,7 +194,7 @@ uv run camcal intrinsics <name>              # -> config/camera_intrinsics/<name
 ```bash
 uv run camcal capture workspace          # 15–25 board views, varied tilt and position
 uv run camcal intrinsics workspace       # -> config/camera_intrinsics/workspace.yaml
-uv run camcal-extrinsics workspace       # board flat on the table; touch corners 1-4 (torque off)
+uv run camcal-extrinsics workspace       # board taped flat; touch corners 1-4 twice each (torque off)
 uv run scene build && uv run scene render
 ```
 
@@ -207,7 +207,18 @@ A touch method that needs no extra hardware:
    camera → board.
 4. Chain them: camera → base. Write the result to `config/cameras.yaml` (pose) and the sim scene.
 
-- **Pass:** at the board corners, the projected FK tip lands within a few pixels in the live image.
+- **Pass:** touch residuals of a few mm, board sides from the touches within ~3 mm of the real
+  board, board height ≈ table top. The tool won't write the camera pose above `--max-residual-mm`
+  (8) without confirmation.
+- **Touch protocol:** tape the board down. Touch each corner twice (`--per-corner 2`): once with
+  the tool vertical, once tilted with the arm reaching differently. Those varied orientations let
+  the fit solve for the real fingertip point. Raw joints go to `runs/extrinsics/<cam>.json`;
+  re-fit offline with `--refit`.
+- **Lesson (first touch session, 2026-10-18):** 4 single touches gave residuals of 7–34 mm. The
+  forward–back board sides matched within 2 mm, but the left–right sides (swept by shoulder pan)
+  came out 2.2 and 5.7 cm short. That's not a rigid board, and the raw joints weren't saved, so the
+  cause was left open (fingertip model, a joint calibration error, or the board sliding). Always
+  save the raw joints and check the side lengths.
 - **Bimanual:** do it once per arm on the same board pose. That also gives the **arm-to-arm
   transform** for the shared MJCF.
 

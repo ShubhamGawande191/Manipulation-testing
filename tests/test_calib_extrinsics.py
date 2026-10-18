@@ -50,3 +50,38 @@ def test_tip_point_is_past_the_ee_site_along_the_tool():
     tip = tip_point(m, mujoco.MjData(m), q)
     site = FK(m).ee_pos(q)
     assert abs(np.linalg.norm(tip - site) - TIP_OFFSET_M) < 1e-9
+
+
+def test_fit_touches_recovers_board_pose_and_tip_offset():
+    pytest.importorskip("mujoco")
+    from scipy.optimize import least_squares
+    from scipy.spatial.transform import Rotation
+
+    from robot_manipulator.calib.extrinsics import TipFK, fit_touches
+
+    fk = TipFK()
+    corners = np.array([[0, 0, 0], [0.2, 0, 0], [0.2, 0.28, 0], [0, 0.28, 0]], dtype=float)
+    R_true = Rotation.from_euler("z", 5, degrees=True).as_matrix()
+    t_true = np.array([0.12, -0.14, -0.027])  # board in front of the arm, like the bench
+    tip_true = fk.tip_local_nominal + np.array([0.004, -0.003, 0.005])
+    world = corners @ R_true.T + t_true
+
+    def ik(target, q0):  # 5 arm joints, gripper closed; pan seeded from both signs
+        f = lambda x: fk.tip(np.r_[x, 0.0], tip_true) - target  # noqa: E731
+        sols = []
+        for pan in (np.arctan2(target[1], target[0]), -np.arctan2(target[1], target[0])):
+            sols.append(least_squares(f, np.r_[pan, q0[1:]], bounds=(-1.6, 1.6)))
+        return np.r_[min(sols, key=lambda r: r.cost).x, 0.0]
+
+    starts = (np.array([0.0, 0.3, 0.6, 1.2, 0.0]), np.array([0.0, 0.1, 0.9, 0.7, 1.0]))
+    qs, ids = [], []
+    for k, w in enumerate(world):
+        for q0 in starts:
+            q = ik(w, q0)
+            assert np.linalg.norm(fk.tip(q, tip_true) - w) < 1e-4
+            qs.append(q)
+            ids.append(k)
+    fit = fit_touches(fk, np.array(qs), np.array(ids), corners)
+    assert fit["res"].max() < 1e-3
+    assert np.allclose(fit["t"], t_true, atol=2e-3)
+    assert np.linalg.norm(fit["tip_local"] - tip_true) < 2e-3
