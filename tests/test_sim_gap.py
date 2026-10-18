@@ -153,3 +153,22 @@ def test_fit_yaml_round_trips_into_a_model(tmp_path):
     assert model.actuator_gainprm[a, 0] == pytest.approx(nominal.gainprm[a, 0] * 0.5)
     assert model.actuator_biasprm[a, 1] == pytest.approx(nominal.biasprm[a, 1] * 0.5)
     assert Path(path).exists()
+
+
+def test_static_stiffness_recovers_k_and_p_scales_the_rest():
+    from robot_manipulator.sim.gap.stiffness import ARM, estimate, p_gain
+
+    rng = np.random.default_rng(0)
+    n = 400
+    tau = np.zeros((n, 5))
+    tau[:, 1] = rng.uniform(-1.2, -0.05, n)  # shoulder_lift carries the gravity load
+    k_true = 20.0
+    err = tau / k_true + rng.normal(0, 0.002, (n, 5))
+    est = {e.joint: e for e in estimate(err, tau, kp_nominal=np.full(5, 1000.0))}
+    lift = est["shoulder_lift"]
+    assert lift.source == "measured" and abs(lift.k_nm_per_rad - k_true) / k_true < 0.05
+    assert abs(lift.kp_scale - lift.k_nm_per_rad / 1000.0) < 1e-12
+    pan = est["shoulder_pan"]  # no gravity signal -> P-scaled from the lift
+    assert pan.source.startswith("P-scaled")
+    ratio = p_gain(ARM[0]) / p_gain(ARM[1])
+    assert abs(pan.k_nm_per_rad - lift.k_nm_per_rad * ratio) < 1e-9

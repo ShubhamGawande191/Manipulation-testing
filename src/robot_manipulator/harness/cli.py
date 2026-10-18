@@ -47,6 +47,7 @@ def run_reach(
     out: Path | None = None,
     settle: bool = False,
     oscillation_guard: bool | None = None,
+    actuator_fit: Path | None = None,
 ) -> dict[str, Any]:
     """Run `n_episodes` home+reach episodes and write episodes.parquet, summary.json and traj/."""
     from robot_manipulator.core.episode_log import EpisodeRecord, write_records
@@ -111,7 +112,9 @@ def run_reach(
     sim_be = None
     real_be = None
     if backend == "sim":
-        sim_be = SimBackend(hz=HZ, viewer=viewer, dr=DRConfig(enabled=dr), seed=seed)
+        sim_be = SimBackend(
+            hz=HZ, viewer=viewer, dr=DRConfig(enabled=dr), seed=seed, actuator_fit=actuator_fit
+        )
     elif backend == "real":
         joint_map = JointMap.from_yaml(joint_map_path)
         real_be = LeRobotBackend(port, joint_map, dry_run=not live)
@@ -258,6 +261,7 @@ def run_reach(
         "p90_final_dist_m": float(np.percentile([e["final_dist_m"] for e in episodes], 90)),
         "settle": bool(settle),
         "oscillation_guard": bool(use_guard),
+        "actuator_fit": str(actuator_fit) if actuator_fit else None,
         "out": str(run_dir),
         "episodes": episodes,
     }
@@ -306,6 +310,9 @@ def reach_cmd(
         "--oscillation-guard/--no-oscillation-guard",
         help="stop a hunting policy early (default: on for real, off for sim/fake)",
     ),
+    actuator_fit: Path | None = typer.Option(
+        None, exists=True, help="sim: twin with this actuator fit (e.g. config/actuator_fit.yaml)"
+    ),
 ) -> None:
     targets = None
     n_episodes = 1
@@ -332,6 +339,7 @@ def reach_cmd(
             out,
             settle,
             oscillation_guard,
+            actuator_fit,
         )
     brief = {k: v for k, v in summary.items() if k != "episodes"}
     typer.echo(json.dumps(brief, indent=2))
@@ -352,6 +360,7 @@ def _run_reach_cmd(
     out,
     settle=False,
     oscillation_guard=None,
+    actuator_fit=None,
 ):
     return run_reach(
         backend=backend,
@@ -368,6 +377,7 @@ def _run_reach_cmd(
         out=out,
         settle=settle,
         oscillation_guard=oscillation_guard,
+        actuator_fit=actuator_fit,
     )
 
 

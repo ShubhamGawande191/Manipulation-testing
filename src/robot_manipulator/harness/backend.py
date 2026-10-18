@@ -24,6 +24,8 @@ from robot_manipulator.harness.clock import Clock
 from robot_manipulator.harness.units import CMD_JOINTS, JointMap
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from robot_manipulator.sim.randomize import DRConfig
 
 log = logging.getLogger(__name__)
@@ -103,7 +105,10 @@ class SimBackend:
         randomizer: Callable[[Any], None] | None = None,
         dr: DRConfig | None = None,
         seed: int = 0,
+        actuator_fit: str | Path | None = None,
     ) -> None:
+        """``actuator_fit``: a `sim.gap.fit` yaml applied to the model (DR then centres on it).
+        Its per-joint command delays add to the DR action delay."""
         import mujoco
 
         from robot_manipulator.sim import model as sim_model
@@ -112,6 +117,11 @@ class SimBackend:
         self._mj = mujoco
         self._sm = sim_model
         self.model = model if model is not None else sim_model.load_model()
+        self._joint_delay = np.zeros(N, dtype=int)
+        if actuator_fit is not None:
+            delays = sim_model.apply_actuator_fit(self.model, actuator_fit)
+            for j, name in enumerate(sim_model.JOINTS):
+                self._joint_delay[j] = int(delays.get(name, 0))
         self.data = mujoco.MjData(self.model)
         self.hz = hz
         self.n_substeps = max(1, round(1.0 / (hz * self.model.opt.timestep)))
@@ -157,7 +167,8 @@ class SimBackend:
         self.data.ctrl[self._act] = q
         self._mj.mj_forward(self.model, self.data)
         # the command pipeline starts holding q, like a policy that has not moved yet
-        self._pending = deque(q.copy() for _ in range(self._delay))
+        self._delays = self._delay + self._joint_delay
+        self._pending = deque(q.copy() for _ in range(self._delays.max() + 1))
 
     def read(self) -> Obs:
         """Measured state: with DR on, q has a per-episode bias and noise, and dq has noise.
@@ -185,9 +196,11 @@ class SimBackend:
         later. Delaying the commanded position matches delaying the policy action, since the
         policy integrates its own command."""
         q = _check_q(q_target)
-        if self._delay > 0:
+        if self._delays.any():
             self._pending.append(q)
-            q = self._pending.popleft()
+            self._pending.popleft()
+            # joint j gets the command sent d_j ticks ago
+            q = np.array([self._pending[-1 - d][j] for j, d in enumerate(self._delays)])
         self.data.ctrl[self._act] = q
         for _ in range(self.n_substeps):
             self._mj.mj_step(self.model, self.data)

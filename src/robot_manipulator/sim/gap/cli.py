@@ -4,6 +4,8 @@
     uv run gap run --backend real --live --motion steps         # one motion (config/gap_motions)
     uv run gap compare runs/gap/<real_run>                       # sim fed the real sent commands
     uv run gap fit runs/gap/<real_run>                           # -> config/actuator_fit.yaml
+    uv run gap stiffness                                         # static k from survey sag
+    uv run gap fit runs/gap/<real_run> --kp-from-sag --out <yaml> # kp pinned, rest fitted
 
 Both backends go through the same SafetyFilter, so sim and real see identical commands
 even where the velocity cap clips a motion. ``compare`` and ``fit`` take the *sent* commands of
@@ -184,12 +186,48 @@ def compare(
     typer.echo(f"(RMSE sim vs real, mrad) -> {real_dir / f'compare_{tag}.json'}")
 
 
+def _stiffness(telemetry: str):
+    from robot_manipulator.sim.gap.stiffness import estimate, static_samples
+    from robot_manipulator.sim.model import actuator_ids, load_model
+
+    paths = sorted((REPO / "runs" / "telemetry").glob(telemetry))
+    if not paths:
+        raise typer.BadParameter(f"no telemetry matching runs/telemetry/{telemetry}")
+    m = load_model()
+    err, tau = static_samples(paths)
+    kp_nom = m.actuator_gainprm[actuator_ids(m)[:5], 0]
+    return estimate(err, tau, kp_nom), paths
+
+
 @app.command()
-def fit(real_dir: Path) -> None:
+def stiffness(
+    telemetry: str = typer.Option("*survey_live.parquet", help="glob under runs/telemetry"),
+) -> None:
+    """Static servo stiffness per joint from held poses (sag vs twin gravity torque)."""
+    est, paths = _stiffness(telemetry)
+    typer.echo(f"{len(paths)} telemetry files, {est[0].n} quasi-static samples")
+    for e in est:
+        r = "  n/a" if e.corr is None else f"{e.corr:+.2f}"
+        typer.echo(
+            f"{e.joint:14} k {e.k_nm_per_rad:6.1f} N·m/rad  kp_scale {e.kp_scale:.4f}  "
+            f"corr {r}  ({e.source})"
+        )
+
+
+@app.command()
+def fit(
+    real_dir: Path,
+    kp_from_sag: bool = typer.Option(
+        False, help="pin kp to the static-sag stiffness (`gap stiffness`), fit the rest"
+    ),
+    telemetry: str = typer.Option("*survey_live.parquet", help="with --kp-from-sag"),
+    out: Path = typer.Option(FIT_PATH, help="output yaml"),
+) -> None:
     """Fit per-joint actuator parameters from each joint's chirp (else sine_all) -> yaml."""
     from robot_manipulator.sim.gap.fit import fit_joint, write_fit_yaml
     from robot_manipulator.sim.model import JOINTS
 
+    kp = {e.joint: e.kp_scale for e in _stiffness(telemetry)[0]} if kp_from_sag else {}
     results = []
     for j, name in enumerate(JOINTS[:5]):
         path = real_dir / f"chirp_{name}.npz"
@@ -199,11 +237,31 @@ def fit(real_dir: Path) -> None:
             typer.echo(f"{name}: no chirp_{name} or sine_all trace; skipped")
             continue
         real = _load(path)
-        r = fit_joint(j, real.q_cmd, real.q[:, j], hz=HZ)
+        r = fit_joint(j, real.q_cmd, real.q[:, j], hz=HZ, kp_scale=kp.get(name))
         results.append(r)
         typer.echo(f"{name:14} {r.params}  rmse {1000 * r.rmse_rad:.1f} mrad")
     if results:
-        typer.echo(f"-> {write_fit_yaml(results, FIT_PATH, hz=HZ)}")
+        src = "sim.gap.fit (least_squares per joint, delay grid 0..6"
+        src += ", kp pinned from static sag)" if kp else ")"
+        typer.echo(f"-> {write_fit_yaml(results, out, hz=HZ, source=src)}")
+
+
+@app.command("closed-loop")
+def closed_loop(runs: list[Path]) -> None:
+    """Score harness reach runs (real and sim twins) on accuracy and hunting, side by side."""
+    from robot_manipulator.sim.gap.closed_loop import score_run
+
+    typer.echo(
+        f"{'run':18} {'backend':7} {'policy':12} {'fit':22} {'n':>3} {'succ':>5} {'med cm':>7} "
+        f"{'p90 cm':>7} {'trips':>6} {'flips/s':>8}"
+    )
+    for r in map(score_run, runs):
+        fit = Path(r["actuator_fit"]).name if r["actuator_fit"] else "-"
+        typer.echo(
+            f"{r['run']:18} {r['backend'] or '?':7} {r['policy'][:12]:12} {fit[:22]:22} "
+            f"{r['n']:3d} {r['success_rate']:5.2f} {r['median_cm']:7.2f} {r['p90_cm']:7.2f} "
+            f"{r['guard_trip_rate']:6.2f} {r['cmd_flips_per_s']:8.1f}"
+        )
 
 
 if __name__ == "__main__":

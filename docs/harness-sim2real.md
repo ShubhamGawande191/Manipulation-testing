@@ -274,3 +274,35 @@ Same 20 targets, `--settle --max-vel 1.0`, leader stowed (taught pose, pan −77
   (`--oscillation-guard/--no-oscillation-guard` overrides; the run summary records it). Sim
   re-check without it: 30/30, median 0.42 cm.
 
+## 2026-10-18 — static stiffness and a closed-loop twin check
+
+New tools: `gap stiffness` (k from survey sag vs the twin's gravity torque), `gap fit --kp-from-sag
+--out`, `harness reach --actuator-fit <yaml>` (sim twin with a fit, per-joint delays applied), and
+`gap closed-loop <runs...>` (accuracy plus hunting: offline guard trip rate and command reversals
+per second after 2 s).
+
+- Static stiffness (3176 quasi-static survey samples): shoulder_lift 18 N·m/rad (r 0.78), wrist_flex
+  5.5 (r 0.56). The others are P-scaled; elbow's own estimate is unreliable (r 0.18, narrow torque
+  range). Nominal kp is 998.
+- **v3 fit, kp pinned to sag:** every other parameter went to its lower bound, and chirp RMSE was
+  40–100 mrad (v2: 5–18). Static sag isn't the dynamic stiffness. `config/actuator_fit.yaml`
+  stays v2; v3 is archived at `runs/gap/fits/actuator_fit_v3_sag.yaml`.
+- Closed loop, same 20 targets, `--settle --max-vel 1.0`:
+
+| Run | Policy | Twin | Within 2 cm | Median / p90 cm | Guard trips | Cmd flips/s |
+|---|---|---|---|---|---|---|
+| real | box | – | 1.00 | 0.42 / 0.83 | **0.00** | **24** |
+| real | fit | – | 0.85 | 0.62 / 2.31 | **1.00** | **51** |
+| sim | box | nominal | 1.00 | 0.39 / 0.86 | 1.00 | 217 |
+| sim | fit | nominal | 0.95 | 0.74 / 1.25 | 1.00 | 217 |
+| sim | box | v2 | 0.95 | 0.35 / 1.01 | 0.00 | 4 |
+| sim | fit | v2 | 1.00 | 0.23 / 0.51 | 0.10 | 3 |
+| sim | box | v3 (sag kp) | 0.95 | 0.47 / 1.00 | 0.00 | 7 |
+| sim | fit | v3 (sag kp) | 1.00 | 0.22 / 0.53 | 0.00 | 3 |
+
+- No twin reproduces the real pattern (box calm, fit hunts). The nominal twin chatters far more
+  than the arm, and the fitted twins far less. The real arm sits between them, which is why the
+  broad-DR `pinc_box_3M` (trained around nominal with wide actuator DR) is the one that transfers.
+- Next modelling candidates: stiff servo + backlash/deadband element; encoder quantization
+  (0.088°) and the ~20 ms bus read in the sim observation path; then re-run this table.
+

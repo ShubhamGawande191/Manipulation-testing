@@ -209,3 +209,25 @@ def test_dry_run_connect_is_read_only(monkeypatch, tmp_path):
     lb.read()
     lb.close()
     assert calls == ["bus.connect", "bus.disconnect(disable_torque=False)"]
+
+
+def test_sim_backend_actuator_fit_per_joint_delay():
+    pytest.importorskip("mujoco")
+    from robot_manipulator.harness.backend import SimBackend
+
+    one = {"kp_scale": 1.0, "damping_scale": 1.0, "frictionloss_scale": 1.0, "armature_scale": 1.0}
+    fit = {
+        "joints": {
+            "shoulder_pan": {**one, "delay_steps": 2},
+            "elbow_flex": {**one, "delay_steps": 0},
+        }
+    }
+    be = SimBackend(actuator_fit=fit)
+    be.reset(np.zeros(6))
+    step = np.zeros(6)
+    step[[0, 2]] = 0.1
+    seen = []
+    for _ in range(3):
+        be.command(step)
+        seen.append(be.data.ctrl[be._act][[0, 2]].copy())
+    assert np.allclose(seen, [[0.0, 0.1], [0.0, 0.1], [0.1, 0.1]])  # pan 2 ticks late

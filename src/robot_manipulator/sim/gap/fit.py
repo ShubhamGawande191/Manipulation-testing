@@ -108,8 +108,12 @@ def fit_joint(
     hz: float = 50.0,
     delays: tuple[int, ...] = DELAYS,
     max_nfev: int = 60,
+    kp_scale: float | None = None,
 ) -> FitResult:
-    """Fit one joint. `q_cmd` (n, 6) is the command sequence, `q_meas` (n,) the recorded angle."""
+    """Fit one joint. `q_cmd` (n, 6) is the command sequence, `q_meas` (n,) the recorded angle.
+
+    ``kp_scale`` pins the stiffness (e.g. from static sag, `gap.stiffness`); only damping,
+    friction, armature and delay are fitted then."""
     model = model if model is not None else load_model()
     nominal = NominalParams.snapshot(model)
     q_cmd = np.asarray(q_cmd, dtype=np.float64)
@@ -119,8 +123,13 @@ def fit_joint(
 
     # Optimise log-scales: the bounds span ~3 decades (0.02x .. 40x), and on linear scales the
     # trust region converged to a low-stiffness local minimum that mimics delay (2026-10-18).
+    free = slice(0, 4) if kp_scale is None else slice(1, 4)
+
+    def full(z: np.ndarray) -> np.ndarray:
+        return np.exp(z) if kp_scale is None else np.r_[kp_scale, np.exp(z)]
+
     def residual(z: np.ndarray, delay: int) -> np.ndarray:
-        p = ActuatorParams(*np.exp(z), delay_steps=delay)
+        p = ActuatorParams(*full(z), delay_steps=delay)
         apply_params(model, nominal, joint, p)
         sim = simulate_joint(model, joint, q_cmd, delay, base, n_substeps)
         return sim - q_meas
@@ -135,9 +144,9 @@ def fit_joint(
             (
                 least_squares(
                     residual,
-                    x0=x0,
+                    x0=x0[free],
                     args=(delay,),
-                    bounds=(np.log(LO), np.log(HI)),
+                    bounds=(np.log(LO[free]), np.log(HI[free])),
                     max_nfev=max_nfev,
                     diff_step=0.05,
                 )
@@ -147,19 +156,24 @@ def fit_joint(
         )
         rmse = float(np.sqrt(np.mean(sol.fun**2)))
         if best is None or rmse < best.rmse_rad:
-            params = ActuatorParams(*np.exp(sol.x), delay_steps=delay)
+            params = ActuatorParams(*full(sol.x), delay_steps=delay)
             best = FitResult(joint=JOINTS[joint], params=params, rmse_rad=rmse, nfev=int(sol.nfev))
     assert best is not None
     apply_params(model, nominal, joint, ActuatorParams())  # leave the model at nominal
     return best
 
 
-def write_fit_yaml(results: list[FitResult], path: str | Path, hz: float = 50.0) -> Path:
+def write_fit_yaml(
+    results: list[FitResult],
+    path: str | Path,
+    hz: float = 50.0,
+    source: str = "sim.gap.fit (least_squares per joint, delay grid 0..6)",
+) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "hz": hz,
-        "source": "sim.gap.fit (least_squares per joint, delay grid 0..6)",
+        "source": source,
         "joints": {
             r.joint: {
                 "kp_scale": float(r.params.kp_scale),

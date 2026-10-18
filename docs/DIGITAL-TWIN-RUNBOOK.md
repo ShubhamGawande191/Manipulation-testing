@@ -234,7 +234,27 @@ A touch method that needs no extra hardware:
 uv run gap run --backend real --live --max-vel 1.0     # 7 motions, ~3 min (operator present)
 uv run gap compare runs/gap/<ts>_real [--fitted]       # sim fed the real *sent* commands
 uv run gap fit runs/gap/<ts>_real                      # -> config/actuator_fit.yaml (~10 min)
+uv run gap stiffness                                   # static k per joint from survey sag
+uv run gap fit runs/gap/<ts>_real --kp-from-sag --out runs/gap/fits/<name>.yaml
+# closed-loop check: same policies, targets and flags on the arm and on each candidate twin
+uv run harness reach --backend sim --policy <p>/reach.onnx --random 20 --seed 0 --max-vel 1.0 \
+    --settle --actuator-fit runs/gap/fits/<name>.yaml
+uv run gap closed-loop runs/harness/<real_run> runs/harness/<sim_run> ...
 ```
+
+- **Static stiffness** (`gap stiffness`): at rest `k (q_cmd − q) = τ_gravity(q)`. Regress the
+  held-pose error from `harness survey` telemetry on the twin's gravity torque. Joints with no
+  usable gravity signal (pan, wrist_roll, or correlation < 0.5) get the best joint's k scaled by
+  the servo P coefficient. Here: shoulder_lift **18 N·m/rad** (r 0.78, P=24) and wrist_flex 5.5
+  (r 0.56, P=16); the nominal model's kp is 998, so the real servos are ~50–180× softer statically.
+  - **Lesson (static ≠ dynamic stiffness):** pinning kp to the sag value and fitting the rest
+    failed. Every other parameter went to its lower bound and chirp RMSE rose from 5–18 to
+    40–100 mrad, because a spring that soft can't follow the chirps as fast as the arm does. The
+    sag is most likely gear backlash, compliance or a deadband rather than the servo's P loop. It
+    belongs in the twin as a separate element (e.g. a gravity-dependent offset), not in kp.
+- **Closed-loop check** (`gap closed-loop`): a twin is good when a *fixed* policy behaves on it as
+  it does on the arm. That covers final accuracy and hunting, measured as the Oscillation guard
+  trip rate (replayed offline) and command reversals per second after 2 s.
 
 - **Lesson (delay):** the real arm lagged the nominal sim by 80–100 ms. Make sure the delay search
   grid covers it (0..6 ticks), and **apply the fitted per-joint delay** wherever the fit is used,
@@ -341,6 +361,6 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 6 Cameras | 🟡 stable paths + locked exposure done; **intrinsics: capture pending** | `cam-setup` mean 114 |
 | 7 Extrinsics | 🟡 tool ready (`camcal-extrinsics`); needs intrinsics + board square size + touch session | |
 | 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
-| 9 Actuator fit | ✅ first fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
+| 9 Actuator fit | 🟡 open-loop OK, **closed-loop not yet**: no twin (nominal / v2 / sag-pinned v3) reproduces 'box calm, fit hunts' (`gap closed-loop`). First fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
 | 11 Atlas + telemetry | 🟡 prior built; survey 21/21 poses; 1702 static samples; lift load r=0.78 | `runs/atlas/`; `runs/telemetry/` |
