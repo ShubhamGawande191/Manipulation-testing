@@ -55,7 +55,13 @@ def run_reach(
     from robot_manipulator.harness.policies.onnx_reach import OnnxReachPolicy
     from robot_manipulator.harness.runner import run_sequence
     from robot_manipulator.harness.safety_layer import SafetyFilter
-    from robot_manipulator.harness.skill import EEReached, JointReached, Skill, TimeLimit
+    from robot_manipulator.harness.skill import (
+        EEReached,
+        JointReached,
+        Oscillation,
+        Skill,
+        TimeLimit,
+    )
     from robot_manipulator.harness.trajlog import TrajectoryLog
     from robot_manipulator.harness.units import JointMap
     from robot_manipulator.sim.envs.reach import (
@@ -157,9 +163,10 @@ def run_reach(
                 "reach",
                 policy,
                 # settle: no early stop, run the full episode and judge the final pose (accuracy)
-                [TimeLimit(EP_SECONDS)]
+                # Oscillation first: a hunting policy stops within ~1-2 s instead of shaking on
+                [Oscillation(), TimeLimit(EP_SECONDS)]
                 if settle
-                else [EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
+                else [Oscillation(), EEReached(SUCCESS_TOL, ee_fn=ee_of), TimeLimit(EP_SECONDS)],
                 hz=HZ,
             )
             t_ep = time.monotonic()
