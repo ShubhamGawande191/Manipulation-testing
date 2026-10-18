@@ -188,3 +188,11 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   servo's load-direction convention. Elbow r = −0.08 and wrist_flex r = −0.37. STS3215 `Present_Load`
   is the PWM duty (≈ P × position error in position mode), so on low-gravity joints static friction
   dominates. Use tracking error/sag there, and treat load as a torque proxy only on shoulder_lift.
+- **Full survey** (`runs/survey/20261018-124129`): **21/21 poses** (HOME + 20), 2 accepted with sag. Median hold error
+  per joint (pan/lift/elbow/wflex/wroll): 0.5 / 0.7 / **1.8** / 0.9 / 0.5°.
+  - The elbow holds ~1.8° short even at P=24. That's a systematic offset for the actuator fit.
+  - Pan stuck **5.9° short** at a near-base left pose (EE 0.12, 0.18, 0.07). Pan has no gravity
+    load, so this is friction at P=16 or cable drag. Candidate for a higher pan P, or inspect it.
+  - Lift sag 3.5° at the far stretched pose (EE 0.39, −0.25, 0.28).
+  - `atlas real` with 1702 static samples: lift gain −0.47 (r = −0.78), wrist_flex −0.29 (r = −0.59),
+    elbow r = −0.17.
