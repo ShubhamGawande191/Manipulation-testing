@@ -81,7 +81,42 @@ def test_fit_touches_recovers_board_pose_and_tip_offset():
             assert np.linalg.norm(fk.tip(q, tip_true) - w) < 1e-4
             qs.append(q)
             ids.append(k)
-    fit = fit_touches(fk, np.array(qs), np.array(ids), corners)
+    fit = fit_touches(fk, np.array(qs), np.array(ids), corners, tip="3d")
     assert fit["res"].max() < 1e-3
     assert np.allclose(fit["t"], t_true, atol=2e-3)
     assert np.linalg.norm(fit["tip_local"] - tip_true) < 2e-3
+
+
+def test_fit_touches_recovers_a_joint_offset():
+    pytest.importorskip("mujoco")
+    from scipy.optimize import least_squares
+
+    from robot_manipulator.calib.extrinsics import TipFK, fit_touches
+
+    fk = TipFK()
+    corners = np.array([[0, 0, 0], [0.2, 0, 0], [0.2, 0.28, 0], [0, 0.28, 0]], dtype=float)
+    t_true = np.array([0.12, -0.14, -0.027])
+    world = corners + t_true
+    elbow_err = np.radians(-6.0)  # the encoder reads 6 deg more than the true elbow angle
+
+    starts = [
+        np.array([0.0, 0.3, 0.6, 1.2, 0.0]),
+        np.array([0.0, 0.1, 0.9, 0.7, 1.0]),
+        np.array([0.0, 0.6, 0.1, 1.4, -0.5]),
+    ]
+    qs, ids = [], []
+    for k, w in enumerate(world):
+        for q0 in starts:
+            f = lambda x: fk.tip(np.r_[x, 0.0]) - w  # noqa: E731
+            pan = np.arctan2(w[1], w[0])
+            sols = [least_squares(f, np.r_[s, q0[1:]], bounds=(-1.6, 1.6)) for s in (pan, -pan)]
+            q_true = np.r_[min(sols, key=lambda r: r.cost).x, 0.0]
+            q_read = q_true.copy()
+            q_read[2] -= elbow_err  # what the encoder reports
+            qs.append(q_read)
+            ids.append(k)
+    nominal = fit_touches(fk, np.array(qs), np.array(ids), corners, tip="none")
+    fit = fit_touches(fk, np.array(qs), np.array(ids), corners, offsets=(1, 2, 3), tip="axis")
+    assert nominal["res"].max() > 5e-3  # the offset is visible as touch inconsistency
+    assert fit["res"].max() < 1e-3
+    assert abs(fit["offsets_rad"]["elbow"] - elbow_err) < np.radians(0.3)

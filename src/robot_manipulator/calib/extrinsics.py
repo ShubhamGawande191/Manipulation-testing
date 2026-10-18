@@ -97,6 +97,7 @@ class TipFK:
         tip = self.d.site_xpos[self.site] + TIP_OFFSET_M * tool_x
         p, R = self.d.xpos[self.body], self.d.xmat[self.body].reshape(3, 3)
         self.tip_local_nominal = R.T @ (tip - p)
+        self.tool_axis_local = R.T @ tool_x
 
     def _pose(self, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         import mujoco
@@ -122,46 +123,81 @@ def tip_point(model, data, q: np.ndarray) -> np.ndarray:
     return TipFK(model).tip(q)
 
 
-TIP_PRIOR_M = 0.01  # prior sigma of the tip-offset correction vs the 1 mm touch noise
+TIP_PRIOR_M = 0.01  # prior sigma of the 3-D tip correction vs the 1 mm touch noise
+JOINT_NAMES = ("pan", "lift", "elbow", "wflex", "wroll")
+# fit variants (key: joint offsets fitted, tip model); `diagnose` prints all of them
+FITS = {
+    "nominal": ((), "none"),
+    "tip": ((), "axis"),
+    "tip3d": ((), "3d"),
+    "joints": ((1, 2, 3), "none"),
+    "joints+tip": ((1, 2, 3), "axis"),
+    "joints4+tip": ((0, 1, 2, 3), "axis"),
+}
 
 
 def fit_touches(
-    fk: TipFK, qs: np.ndarray, corner_ids: np.ndarray, corners: np.ndarray, fit_tip: bool = True
+    fk: TipFK,
+    qs: np.ndarray,
+    corner_ids: np.ndarray,
+    corners: np.ndarray,
+    offsets: tuple[int, ...] = (),
+    tip: str = "3d",
 ) -> dict:
-    """Board pose in the robot frame (and optionally the fingertip point) from corner touches.
+    """Board pose in the robot frame from corner touches, optionally with a kinematic correction.
 
     ``qs`` (n, 6) joint vectors, ``corner_ids`` (n,) index into ``corners`` (4, 3, board frame).
-    With touches at several wrist angles per corner the tip offset is identifiable; it is
-    regularized toward the model's nominal tip (sigma ``TIP_PRIOR_M``).
+    ``offsets``: joint indices whose encoder offset is fitted (rad, added to the reading).
+    ``tip``: "none" (model fingertip), "axis" (fingertip length along the tool axis), or "3d"
+    (free tip point, regularized toward the model with sigma ``TIP_PRIOR_M``). Touches of each
+    corner from clearly different arm configurations make these identifiable.
     """
     from scipy.optimize import least_squares
     from scipy.spatial.transform import Rotation
 
-    poses = fk.poses(qs)
-    tip0 = fk.tip_local_nominal
-    dst = np.array([p + R @ tip0 for p, R in poses])
-    R0, t0, _ = kabsch(corners[corner_ids], dst)
+    qs = np.asarray(qs, dtype=float)
+    tip0, ax = fk.tip_local_nominal, fk.tool_axis_local
+    n_off, n_tip = len(offsets), {"none": 0, "axis": 1, "3d": 3}[tip]
 
     def unpack(x):
         R = Rotation.from_rotvec(x[:3]).as_matrix()
-        tip = tip0 + (x[6:9] if fit_tip else 0.0)
-        return R, x[3:6], tip
+        q = qs.copy()
+        for k, j in enumerate(offsets):
+            q[:, j] += x[6 + k]
+        tx = x[6 + n_off :]
+        tip_local = tip0 + (tx[0] * ax if tip == "axis" else tx if tip == "3d" else 0.0)
+        return R, x[3:6], q, tip_local
+
+    def touched(q, tip_local):
+        return np.array([p + Rb @ tip_local for p, Rb in fk.poses(q)])
 
     def residual(x):
-        R, t, tip = unpack(x)
-        pred = corners[corner_ids] @ R.T + t
-        meas = np.array([p + Rb @ tip for p, Rb in poses])
-        r = (meas - pred).ravel()
-        if fit_tip:
-            r = np.r_[r, 0.001 * x[6:9] / TIP_PRIOR_M]
+        R, t, q, tip_local = unpack(x)
+        r = (touched(q, tip_local) - (corners[corner_ids] @ R.T + t)).ravel()
+        if tip == "3d":
+            r = np.r_[r, 0.001 * x[6 + n_off :] / TIP_PRIOR_M]
         return r
 
-    x0 = np.r_[Rotation.from_matrix(R0).as_rotvec(), t0, np.zeros(3 if fit_tip else 0)]
+    R0, t0, _ = kabsch(corners[corner_ids], touched(qs, tip0))
+    x0 = np.r_[Rotation.from_matrix(R0).as_rotvec(), t0, np.zeros(n_off + n_tip)]
     sol = least_squares(residual, x0)
-    R, t, tip = unpack(sol.x)
-    meas = np.array([p + Rb @ tip for p, Rb in poses])
-    res = np.linalg.norm(meas - (corners[corner_ids] @ R.T + t), axis=1)
-    return {"R": R, "t": t, "tip_local": tip, "tip_shift_m": tip - tip0, "res": res, "pts": meas}
+    R, t, q, tip_local = unpack(sol.x)
+    pts = touched(q, tip_local)
+    res = np.linalg.norm(pts - (corners[corner_ids] @ R.T + t), axis=1)
+    return {
+        "R": R,
+        "t": t,
+        "tip_local": tip_local,
+        "tip_shift_m": tip_local - tip0,
+        "offsets_rad": {JOINT_NAMES[j]: float(sol.x[6 + k]) for k, j in enumerate(offsets)},
+        "res": res,
+        "pts": pts,
+    }
+
+
+def diagnose(fk: TipFK, qs, corner_ids, corners) -> list[tuple[str, dict]]:
+    """Fit every variant in ``FITS``; a big drop in residual names the likely error source."""
+    return [(k, fit_touches(fk, qs, corner_ids, corners, *v)) for k, v in FITS.items()]
 
 
 def side_lengths(pts_by_corner: np.ndarray) -> list[float]:
@@ -251,7 +287,12 @@ def _touch(port: str, robot_id: str, per_corner: int) -> tuple[np.ndarray, np.nd
     robot = SOFollower(build_follower_config(port=port, robot_id=robot_id, cameras=False))
     robot.bus.connect()
     qs, ids = [], []
-    hints = ("tool pointing straight down", "wrist tilted, arm reaching differently")
+    hints = (
+        "tool pointing straight down",
+        "wrist tilted toward the robot, elbow high",
+        "wrist tilted away from the robot, elbow low",
+        "tool tilted sideways, arm reaching differently",
+    )
     try:
         torque = robot.bus.sync_read("Torque_Enable", normalize=False)
         if any(v for k, v in torque.items() if k != "gripper"):
@@ -278,8 +319,12 @@ def main(
     cam_name: str = typer.Argument("workspace"),
     port: str = typer.Option("/dev/so101_follower"),
     robot_id: str = typer.Option("my_so101_follower"),
-    per_corner: int = typer.Option(2, help="touches per corner (vary the wrist between them)"),
-    fit_tip: bool = typer.Option(True, help="also fit the fingertip point (needs per_corner >= 2)"),
+    per_corner: int = typer.Option(4, help="touches per corner, each in a different arm pose"),
+    fit: str | None = typer.Option(
+        None,
+        help=f"model for the camera pose: {', '.join(FITS)} (default: joints+tip from "
+        "12 touches, else tip3d)",
+    ),
     max_residual_mm: float = typer.Option(8.0, help="ask before writing the scene above this"),
     refit: Path | None = typer.Option(
         None, help="re-fit a saved session (runs/extrinsics/<cam>.json); no camera, no arm"
@@ -306,7 +351,23 @@ def main(
 
     # 3. fit the board in the robot frame, chain to the camera
     fk = TipFK(load_model())
-    fit = fit_touches(fk, qs, ids, corners, fit_tip=fit_tip and per_corner >= 2)
+    fit_key = fit or ("joints+tip" if len(qs) >= 12 else "tip3d")
+    if fit_key not in FITS:
+        raise typer.BadParameter(f"--fit must be one of {list(FITS)}")
+    typer.echo(f"{'model':14} {'max mm':>7} {'rms mm':>7}  parameters")
+    fits = dict(diagnose(fk, qs, ids, corners))
+    for key, f in fits.items():
+        r = 1000 * f["res"]
+        params = [f"{j} {np.degrees(v):+.1f}°" for j, v in f["offsets_rad"].items()]
+        if FITS[key][1] == "axis":
+            params.append(f"tip {1000 * float(f['tip_shift_m'] @ fk.tool_axis_local):+.1f} mm")
+        elif FITS[key][1] == "3d":
+            params.append(f"tip {np.round(1000 * f['tip_shift_m'], 1).tolist()} mm")
+        mark = "*" if key == fit_key else " "
+        typer.echo(
+            f"{mark}{key:13} {r.max():7.1f} {np.sqrt(np.mean(r**2)):7.1f}  {', '.join(params)}"
+        )
+    fit = fits[fit_key]
     p, R_rc = camera_in_robot(R_cb, t_cb, fit["R"], fit["t"])
     mean_pts = np.array([fit["pts"][ids == k].mean(0) for k in range(4)])
     truth = side_lengths(corners)
@@ -320,7 +381,12 @@ def main(
             for k, (a, b) in enumerate(zip(side_lengths(mean_pts), truth))
         )
     )
-    typer.echo(f"fingertip correction vs model (mm): {np.round(1000 * fit['tip_shift_m'], 1)}")
+    if fit["offsets_rad"]:
+        typer.echo(
+            "joint offsets suggested by this session (validate on a second session before "
+            "touching config/sim2real.yaml): "
+            + ", ".join(f"{j} {np.degrees(v):+.1f}°" for j, v in fit["offsets_rad"].items())
+        )
     typer.echo(f"board height {mean_pts[:, 2].mean() * 100:.1f} cm vs table {table_z * 100:.1f} cm")
     typer.echo(f"camera position (robot frame) {np.round(p, 4).tolist()} m, fovy {fovy:.1f} deg")
 
@@ -336,6 +402,8 @@ def main(
         "R_robot_board": fit["R"].tolist(),
         "t_robot_board": fit["t"].tolist(),
         "tip_local": fit["tip_local"].tolist(),
+        "fit": fit_key,
+        "joint_offsets_rad": fit["offsets_rad"],
         "camera_pos": p.tolist(),
         "R_robot_cam": R_rc.tolist(),
         "touch_residual_m": fit["res"].tolist(),
