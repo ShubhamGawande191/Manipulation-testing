@@ -278,4 +278,4 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
 | 7 Extrinsics | ⏳ needs board square size + touch session | |
 | 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
 | 9 Actuator fit | ⏳ | |
-| 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 4/5 at 0.5 rad/s** | `runs/harness/20261018-120142`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
+| 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 5/5 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-120930`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |

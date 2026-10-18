@@ -162,3 +162,7 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
 - Telemetry (`runs/telemetry/20261018-120145_harness_live.*`, the first real atlas data): peak |load|
   32 % (elbow), p95 ≤ 27 %. Temperatures were steady at 21–26 °C, with a **single-sample bus misread
   of 75 °C**, so atlas statistics must be robust (median/outlier rejection). Minimum voltage 10.8 V.
+- **Re-run after `a765f99`** (same policy, same 5 targets, `--max-vel 0.5`, policy now integrating at the
+  cap): **5/5**, all within 1.9 cm, 0.8–2.3 s (`runs/harness/20261018-120930`). The previously
+  missed far-right target reached in 2.3 s. The integration fix alone closed the gap; the
+  cap-DR retrain (`runs/ppo_reach/pinc_cap_3M`) is for robustness at other caps.
