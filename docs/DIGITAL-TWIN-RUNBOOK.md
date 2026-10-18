@@ -213,11 +213,19 @@ The plan is a touch method that needs no extra hardware:
 - Find the pose by touching 3 points on the rim and 1 tray corner, then fit. Or detect it in the
   calibrated workspace camera.
 
-## 9. Actuator real2sim — *pending*
+## 9. Actuator real2sim
 
 ```bash
-# sim/gap: motions -> replay (sim and real, --live, low max-vel) -> compare -> fit
+uv run gap run --backend real --live --max-vel 1.0     # 7 motions, ~3 min (operator present)
+uv run gap compare runs/gap/<ts>_real [--fitted]       # sim fed the real *sent* commands
+uv run gap fit runs/gap/<ts>_real                      # -> config/actuator_fit.yaml (~10 min)
 ```
+
+- **Lesson (delay):** the real arm lagged the nominal sim by 80–100 ms. Make sure the delay search
+  grid covers it (0..6 ticks), and **apply the fitted per-joint delay** wherever the fit is used,
+  because `apply_actuator_fit` only sets model parameters and returns the delays.
+- **Lesson (held-out):** fit on the chirps, judge on the motions the fit didn't see (steps, sine).
+  Parameters pinned on their bounds mean the fit is compensating, not identifying.
 
 - Replay the same motion files in sim and on the real arm. Compare per joint (RMSE, lag, overshoot),
   then fit kp, damping, friction, armature and delay. Retrain with domain randomization centred on
@@ -305,6 +313,6 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 6 Cameras | 🟡 stable paths + locked exposure done; **intrinsics: capture pending** | `cam-setup` mean 114 |
 | 7 Extrinsics | ⏳ needs board square size + touch session | |
 | 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
-| 9 Actuator fit | ⏳ | |
+| 9 Actuator fit | ✅ first fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
 | 11 Atlas + telemetry | 🟡 prior built; survey 21/21 poses; 1702 static samples; lift load r=0.78 | `runs/atlas/`; `runs/telemetry/` |

@@ -132,14 +132,20 @@ def _sim_from_commands(real: ReplayTrace, fit: Path | None = None) -> ReplayTrac
     from robot_manipulator.sim.randomize import DRConfig
 
     model = load_model()
+    q_cmd = np.array(real.q_cmd, dtype=np.float64)
     if fit is not None:
-        apply_actuator_fit(model, fit)
+        delays = apply_actuator_fit(model, fit)  # returns {joint: delay_steps}
+        for j, name in enumerate(JOINTS):
+            k = int(delays.get(name, 0))
+            if k > 0:  # command pipeline delay: joint j sees the command from k ticks earlier
+                q_cmd[k:, j] = q_cmd[:-k, j].copy()
+                q_cmd[:k, j] = q_cmd[0, j]
     lo, hi = joint_ranges(model, JOINTS)
     be = SimBackend(model=model, hz=HZ, dr=DRConfig(enabled=False))
     be.reset(real.q[0])
     clock = SimClock()
     safety = SafetyFilter(lo=lo, hi=hi, margin=0.0, max_vel=1e6, clock=clock)  # already filtered
-    trace = replay(real.q_cmd, be, safety, hz=HZ, clock=clock)
+    trace = replay(q_cmd, be, safety, hz=HZ, clock=clock)
     be.close()
     return trace
 

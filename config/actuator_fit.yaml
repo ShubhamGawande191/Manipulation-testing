@@ -1,0 +1,38 @@
+hz: 50.0
+source: sim.gap.fit (least_squares per joint, delay grid 0..6)
+joints:
+  shoulder_pan:
+    kp_scale: 0.20000000000000004
+    damping_scale: 4.127431086939199
+    frictionloss_scale: 9.99999999999739
+    armature_scale: 0.9774092155674553
+    delay_steps: 3
+    rmse_rad: 0.007809101140040797
+  shoulder_lift:
+    kp_scale: 0.20000000000000412
+    damping_scale: 2.7718798638974933
+    frictionloss_scale: 9.999999999999975
+    armature_scale: 1.7357664774115065
+    delay_steps: 2
+    rmse_rad: 0.021333534005876773
+  elbow_flex:
+    kp_scale: 0.20000003541696304
+    damping_scale: 3.163031121503476
+    frictionloss_scale: 9.9999818214196
+    armature_scale: 1.5972873520585626
+    delay_steps: 2
+    rmse_rad: 0.017419648118082564
+  wrist_flex:
+    kp_scale: 0.21539373297729666
+    damping_scale: 5.135937029923523
+    frictionloss_scale: 0.0500000000346606
+    armature_scale: 0.10000000000000002
+    delay_steps: 3
+    rmse_rad: 0.012783151164161745
+  wrist_roll:
+    kp_scale: 0.21896751286709948
+    damping_scale: 5.177802275298295
+    frictionloss_scale: 0.05000049278101341
+    armature_scale: 0.10000000025822603
+    delay_steps: 3
+    rmse_rad: 0.0098253039515086

@@ -196,3 +196,21 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   - Lift sag 3.5° at the far stretched pose (EE 0.39, −0.25, 0.28).
   - `atlas real` with 1702 static samples: lift gain −0.47 (r = −0.78), wrist_flex −0.29 (r = −0.59),
     elbow r = −0.17.
+
+## 2026-10-18 — actuator real2sim (H3): `gap run | compare | fit`
+
+- Real replay `runs/gap/20261018-125035_real` (7 motions, `--max-vel 1.0`, about 3 min, parked via
+  HOME). Nominal sim (Menagerie STS3215 params), fed the *sent* commands: the driven joint's RMSE
+  during its chirp was **68–78 mrad**, the real arm **lagged 80–100 ms** (4–5 ticks), and its overshoot
+  was 100–170 mrad against 15–22 mrad in sim.
+- `gap fit` (per joint from its chirp, delay grid widened to 0..6) → `config/actuator_fit.yaml`:
+  kp ×0.20–0.22, damping ×2.8–5.2, delay 2–3 ticks (40–60 ms). The servos are much softer than the
+  nominal model, which fits LeRobot P=16–24. **Caveat:** kp sits on its 0.2 lower bound and
+  friction/armature on bounds for several joints, so the true optimum may lie outside. Widen the
+  bounds and refit if the static offsets matter.
+- Fitted twin (with per-joint delay; `gap compare --fitted`):
+  - driven-joint chirp RMSE **8–21 mrad** (was 68–78);
+  - chirp lag **0 ms** (was 80–100);
+  - held-out `steps` **18.7 → 9.8 mrad**, held-out `sine_all` 25.5 → 18.8 mrad.
+- Remaining: a static offset on lift (~18 mrad) and elbow (~10 mrad) across all motions. That's
+  gravity sag / steady error, which these parameters don't model.

@@ -29,7 +29,7 @@ from robot_manipulator.sim.model import (
 )
 from robot_manipulator.sim.randomize import NominalParams
 
-DELAYS = (0, 1, 2, 3)
+DELAYS = (0, 1, 2, 3, 4, 5, 6)  # real arm lags nominal sim 80-100 ms = 4-5 ticks (2026-10-18)
 LO = np.array([0.2, 0.05, 0.05, 0.1])  # kp, damping, frictionloss, armature scales
 HI = np.array([5.0, 10.0, 10.0, 10.0])
 
@@ -142,7 +142,7 @@ def write_fit_yaml(results: list[FitResult], path: str | Path, hz: float = 50.0)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "hz": hz,
-        "source": "sim.gap.fit (least_squares per joint, delay grid 0..3)",
+        "source": "sim.gap.fit (least_squares per joint, delay grid 0..6)",
         "joints": {
             r.joint: {
                 "kp_scale": float(r.params.kp_scale),
