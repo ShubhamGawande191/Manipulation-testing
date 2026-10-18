@@ -28,6 +28,11 @@ from robot_manipulator.sim.model import JOINTS, apply_joint_couplings, joint_qpo
 EXTRA_EVERY = 2
 GLIDE_TOL = 0.05  # rad, per joint
 GLIDE_TIMEOUT_S = 10.0
+# A glide that times out is still a valid survey pose if the arm stopped close and unloaded:
+# gravity sag at stretched poses (shoulder 3.5° low at 26 % load, 2026-10-18) is atlas data,
+# not a reason to abort. Larger errors or high load look like contact -> abort.
+SAG_TOL_RAD = 0.15
+SAG_MAX_LOAD = 600  # permille
 
 
 def collision_free(model: mujoco.MjModel, q: np.ndarray) -> bool:
@@ -67,6 +72,19 @@ def survey_poses(n: int, seed: int = 0, model: mujoco.MjModel | None = None) -> 
         order.append(nxt)
         left.remove(nxt)
     return q_cand[order]
+
+
+def _max_load(be) -> float:
+    """Largest |load| (permille) across arm servos, real backend only (0 elsewhere)."""
+    robot = getattr(be, "_robot", None)
+    bus = getattr(robot, "bus", None)
+    if bus is None:
+        return 0.0
+    try:
+        raw = bus.sync_read("Present_Load", normalize=False)
+        return float(max(abs(v) for k, v in raw.items() if k != "gripper"))
+    except Exception:
+        return float("inf")  # cannot verify -> treat as unsafe
 
 
 def run_survey(
@@ -124,11 +142,25 @@ def run_survey(
                 hz=hz,
             )
             res = run_skill(glide, be, safety, goal={}, clock=clock)
+            sag = False
             if res.status != "success":
-                results.append({"pose": i, "reached": False, "reason": res.reason})
+                err = np.abs(np.asarray(be.read()["q"]) - target)[:5]
+                load = _max_load(be)
                 if backend == "real" and not live:
+                    results.append({"pose": i, "reached": False, "reason": res.reason})
                     continue  # dry run: nothing moves, just show we got this far
-                break
+                if err.max() > SAG_TOL_RAD or load > SAG_MAX_LOAD:
+                    results.append(
+                        {
+                            "pose": i,
+                            "reached": False,
+                            "reason": res.reason,
+                            "err_deg": np.degrees(err).round(2).tolist(),
+                            "max_load": load,
+                        }
+                    )
+                    break
+                sag = True
             hold = Skill(
                 "survey_hold", GlideTo(target, max_vel=max_vel, hz=hz), [TimeLimit(hold_s)], hz=hz
             )
@@ -138,6 +170,7 @@ def run_survey(
                 {
                     "pose": i,
                     "reached": True,
+                    "sag": sag,
                     "target_rad": target.tolist(),
                     "err_deg": np.degrees(q - target).round(2).tolist(),
                 }

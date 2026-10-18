@@ -179,3 +179,12 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   park ticks logged.
 - **Decision:** the deployed reach policy stays `runs/ppo_reach/pinc_box_3M` (real 20/20, sim 97 % at
   0.5 rad/s). The integration-at-cap fix was what mattered; cap DR added nothing measurable.
+- **First survey** (`--n 20`): 8 poses held, then it aborted on pose 8 (arm stretched forward, lift +41°).
+  That was gravity sag (lift 3.5° low at 26 % load) beyond the 0.05 rad glide tolerance, not
+  contact. The survey now accepts a timed-out glide as "reached with sag" when the error is
+  ≤ 0.15 rad and load ≤ 60 %.
+- **`atlas real`, first load calibration** (525 quasi-static samples): shoulder_lift measured load
+  ≈ −0.52 × the twin's predicted gravity load (permille of tau_max), **r = −0.79**. The sign is the
+  servo's load-direction convention. Elbow r = −0.08 and wrist_flex r = −0.37. STS3215 `Present_Load`
+  is the PWM duty (≈ P × position error in position mode), so on low-gravity joints static friction
+  dominates. Use tracking error/sag there, and treat load as a torque proxy only on shoulder_lift.
