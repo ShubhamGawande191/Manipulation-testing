@@ -249,6 +249,31 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
 - **Lesson (one sampler):** the harness and the trainer must share one target sampler. When they
   differed, harness success dropped from 99 % to 78 %.
 
+
+## 11. Telemetry + workspace atlas (what the arm can do where)
+
+```bash
+uv run atlas prior [--n 200000]        # layer 1: twin physics, ~35 s -> runs/atlas/sim_prior.parquet + maps
+uv run harness survey --backend real --n 20 --live --max-vel 0.5   # hold at spread poses (operator present)
+uv run atlas real                       # layer 2: aggregate runs/telemetry -> runs/atlas/real.parquet
+uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
+```
+
+- **Telemetry is automatic** on every real teleop/harness/survey run: `runs/telemetry/<stamp>_<source>`
+  `.parquet` + `.json`. It logs commanded vs measured joints in LeRobot units and sim radians, plus load,
+  current, temperature and voltage (every 10th step, or every 2nd during a survey). The `.json` holds
+  the joint map, calibration file (sha256) and git commit.
+- **Layer 1 (prior):** per 2.5 cm voxel, from contact-free sampled poses: holding-torque margin, max
+  payload and max downward push, overall and with the tool pointing down. These are static
+  estimates. They overstate push near singular poses (e.g. arm straight up).
+- **Layer 2 (real):** per voxel, median tracking error, median quasi-static load, and the twin's
+  predicted gravity load at the same poses. It fits `measured ≈ gain × predicted` per joint.
+  - Reach runs give almost no static samples, so **run the survey**.
+  - Use medians: the servo bus occasionally misreads a register (one 75 °C sample among a steady
+    24 °C).
+- **Planned:** scale presses for push-force ground truth (MiniLab), and atlas queries feeding the safety
+  filter and target sampling.
+
 ---
 
 ## Adapting to another setup (e.g. the bimanual SO-101s at work)
@@ -279,3 +304,4 @@ uv run harness reach --backend real --live --max-vel 0.5 ...   # operator presen
 | 8 Scene / reset cup | ⏳ `cup.stl` inspected | |
 | 9 Actuator fit | ⏳ | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 5/5 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-120930`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
+| 11 Atlas + telemetry | 🟡 prior built; telemetry logging live; survey ready to run | `runs/atlas/`; `runs/telemetry/` |
