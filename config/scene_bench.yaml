@@ -1,0 +1,23 @@
+# Home bench geometry (follower base frame: x forward into the table, y to the follower's left,
+# z up; origin = follower base origin, 2.75 cm above the table). Measured by the user 2026-10-18
+# unless marked TODO. Rebuild the MJCF with `uv run scene build`.
+table:
+  size_x: 0.435            # depth (table is 53.5 x 43.5 cm; arms on a long side)
+  size_y: 0.535
+  top_z: -0.0275           # base plate sits ~2.75 cm above the table
+  back_edge_x: -0.04       # TODO-measure: follower base origin to the table's back edge
+  right_edge_y: -0.225     # follower centre is 22.5 cm from its side edge
+column:                    # TheRobotStudio overhead mount (cam_mount_* STL), extended by the user
+  center_x: 0.0            # TODO: refine from camera extrinsics
+  center_y: 0.1145         # column centre 11.45 cm from the follower centre
+  size_x: 0.0366
+  size_y: 0.0374
+  lens_height_above_table: 0.55
+workspace_camera:
+  overhang_x: 0.045        # cam_mount_top reaches ~45 mm toward the table (STL); TODO-calibrate
+  pitch_deg: 0.0           # 0 = straight down; TODO from extrinsics
+  fovy_deg: 46.8           # 2*atan(240/554): 640x480 with fy~554 (archived ChArUco images)
+leader:
+  base_y: 0.229            # leader centre 11.45 cm on the other side of the column
+  base_x: 0.0
+  pose: stow               # stow | rest  (config/leader_stow.yaml), LeRobot deg ~ sim rad identity
