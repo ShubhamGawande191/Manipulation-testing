@@ -43,25 +43,54 @@ class FakeLeader:
         self.bus = FakeBus(q0)
 
 
-def test_stow_rotates_only_pan_releases_and_restores(monkeypatch):
+CFG = {
+    "port": "p",
+    "leader_id": "id",
+    "stow_pose_deg": None,
+    "default_stow_pan_deg": -60.0,
+    "rest_pose_deg": [-3.1, -107.0, 96.6, 77.3, -85.1, 1.5],
+    "torque_limit": 300,
+    "speed_deg_s": 30.0,
+    "hold_torque_during_run": True,
+}
+
+
+def _q(leader):
+    return np.array([leader.bus.q[j] for j in fol.JOINTS])
+
+
+def test_default_stow_turns_left_holds_and_returns_to_rest(monkeypatch):
     monkeypatch.setattr(fol.time, "sleep", lambda s: None)
-    rest = [-3.1, -107.0, 96.6, 77.3, -85.1, 1.5]
-    leader = FakeLeader(rest)
-    s = LeaderStow(
-        "p",
-        "id",
-        stow_pan_deg=60.0,
-        torque_limit=300,
-        speed_deg_s=30.0,
-        connect=lambda port, lid: leader,
-    )
+    start = [20.6, -97.1, 97.0, 73.6, -84.7, 1.1]  # wherever the leader happens to be
+    leader = FakeLeader(start)
+    s = LeaderStow(dict(CFG), connect=lambda port, lid: leader)
     with s:
-        q = np.array([leader.bus.q[j] for j in fol.JOINTS])
-        assert q[0] == 60.0 and np.allclose(q[1:], rest[1:])  # only pan moved
-        assert leader.bus.torque is False  # released while the follower works
+        q = _q(leader)
+        assert q[0] == -60.0  # the leader's left (negative pan)
+        np.testing.assert_allclose(q[1:], CFG["rest_pose_deg"][1:])
+        assert leader.bus.torque is True  # holding during the run
         assert "Torque_Limit=300" in leader.bus.log
-    q = np.array([leader.bus.q[j] for j in fol.JOINTS])
-    assert q[0] == -3.1 and leader.bus.torque is False and leader.bus.disconnected is False
+    np.testing.assert_allclose(_q(leader), CFG["rest_pose_deg"])  # back to REST, not to start
+    assert leader.bus.torque is False and leader.bus.disconnected is False
+
+
+def test_taught_stow_pose_is_used(monkeypatch):
+    monkeypatch.setattr(fol.time, "sleep", lambda s: None)
+    taught = [-75.0, -60.0, 70.0, 40.0, 0.0, 10.0]
+    leader = FakeLeader(CFG["rest_pose_deg"])
+    with LeaderStow({**CFG, "stow_pose_deg": taught}, connect=lambda port, lid: leader):
+        np.testing.assert_allclose(_q(leader), taught)
+
+
+def test_teach_rewrites_only_the_pose_line(tmp_path):
+    from robot_manipulator.hw.leader import _save_pose
+
+    path = tmp_path / "stow.yaml"
+    path.write_text("port: x\nstow_pose_deg: null          # comment kept\nspeed_deg_s: 30.0\n")
+    _save_pose("stow_pose_deg", np.array([-60.0, -100, 90, 70, -80, 2]), path)
+    text = path.read_text()
+    assert "stow_pose_deg: [-60.0, -100.0, 90.0, 70.0, -80.0, 2.0]  # comment kept" in text
+    assert "port: x" in text and "speed_deg_s: 30.0" in text
 
 
 def test_leader_clear_only_for_real_live_runs():

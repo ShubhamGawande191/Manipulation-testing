@@ -1,19 +1,19 @@
-"""Leader-arm stow: rotate the leader out of the follower's workspace during autonomous runs.
+"""Leader-arm stow: move the leader out of the follower's workspace during autonomous runs.
 
-The leader sits beside the follower. The follower hit it at a near-base pose on its left
-(survey 2026-10-18). ``LeaderStow`` is a context manager:
+The leader sits beside the follower, which hit it at a near-base pose on its left (survey
+2026-10-18). ``LeaderStow`` is a context manager:
 
-1. On enter, it glides the leader's pan to ``stow_pan_deg`` (everything else stays folded) under
-   a low torque limit, then releases torque. Pan carries no gravity load, so the leader stays put
-   and remains back-drivable.
-2. On exit, it glides back to the pose it found and releases.
+1. On enter it glides the leader (all joints, velocity-capped, low torque limit) to the stow pose,
+   a full pose taught by hand or, by default, the rest pose with the pan turned to its left.
+2. During the run it holds torque (``hold_torque_during_run``).
+3. On exit it glides back to the **rest pose** and releases torque.
 
-    with LeaderStow.from_config():            # in harness / survey / gap live runs
+    with LeaderStow.from_config():            # harness reach / survey / gap live runs
         ...
-    uv run leader-stow [--dry-run|--stow|--restore-pan DEG]
+    uv run leader-stow --dry-run | --teach | --teach-rest | --stow | --rest
 
-It reuses the safe primitives from ``hw.follower`` (Goal = Present before torque, velocity-capped
-glide). If the leader can't be stowed, the caller must not start the follower.
+It reuses ``hw.follower`` primitives (Goal = Present before torque, velocity-capped glide). If the
+leader can't be stowed, the caller must not start the follower.
 """
 
 from __future__ import annotations
@@ -44,59 +44,62 @@ def connect_leader(port: str, leader_id: str):
     return leader
 
 
-def move_pan(leader, pan_deg: float, torque_limit: int, speed: float, hz: float = HZ) -> None:
-    """Glide the leader so pan = ``pan_deg`` (other joints held where they are), then release."""
-    bus = leader.bus
+def load_config(path: Path = CONFIG) -> dict:
+    return yaml.safe_load(Path(path).read_text())
+
+
+def stow_pose(cfg: dict) -> np.ndarray:
+    if cfg.get("stow_pose_deg") is not None:
+        return np.asarray(cfg["stow_pose_deg"], dtype=float)
+    pose = np.asarray(cfg["rest_pose_deg"], dtype=float).copy()
+    pose[0] = float(cfg["default_stow_pan_deg"])
+    return pose
+
+
+def torque_on(leader, torque_limit: int) -> np.ndarray:
+    """Goal = Present, torque limit, torque on. Returns the present pose."""
     here = bus_pos(leader)
-    send_goal(leader, here)  # Goal = Present: enabling torque must not jump
+    send_goal(leader, here)  # enabling torque must not jump
     for motor in JOINTS:
-        bus.write("Torque_Limit", motor, int(torque_limit))
-    bus.enable_torque()
+        leader.bus.write("Torque_Limit", motor, int(torque_limit))
+    leader.bus.enable_torque()
+    return here
+
+
+def move_to(leader, target: np.ndarray, torque_limit: int, speed: float, release: bool) -> None:
+    here = torque_on(leader, torque_limit)
     try:
-        target = here.copy()
-        target[0] = float(pan_deg)
-        glide(leader, here, target, speed, hz)
+        glide(leader, here, np.asarray(target, dtype=float), speed, HZ)
     finally:
-        bus.disable_torque()
+        if release:
+            leader.bus.disable_torque()
 
 
 class LeaderStow:
-    def __init__(
-        self,
-        port: str,
-        leader_id: str,
-        stow_pan_deg: float,
-        torque_limit: int,
-        speed_deg_s: float,
-        connect=connect_leader,
-    ) -> None:
-        self.port, self.leader_id = port, leader_id
-        self.stow_pan_deg, self.torque_limit, self.speed = stow_pan_deg, torque_limit, speed_deg_s
+    def __init__(self, cfg: dict, connect=connect_leader) -> None:
+        self.cfg = cfg
         self._connect = connect
         self.leader = None
-        self.original_pan: float | None = None
 
     @classmethod
-    def from_config(cls, path: Path = CONFIG, **overrides) -> LeaderStow:
-        cfg = {**yaml.safe_load(Path(path).read_text()), **overrides}
-        return cls(
-            cfg["port"],
-            cfg["leader_id"],
-            float(cfg["stow_pan_deg"]),
-            int(cfg["torque_limit"]),
-            float(cfg["speed_deg_s"]),
-        )
+    def from_config(cls, path: Path = CONFIG) -> LeaderStow:
+        return cls(load_config(path))
 
     def __enter__(self) -> LeaderStow:
-        self.leader = self._connect(self.port, self.leader_id)
+        c = self.cfg
+        self.leader = self._connect(c["port"], c["leader_id"])
         try:
-            self.original_pan = float(bus_pos(self.leader)[0])
-            console.print(
-                f"[cyan]stowing leader: pan {self.original_pan:+.1f} → "
-                f"{self.stow_pan_deg:+.1f} deg[/]"
+            target = stow_pose(c)
+            console.print(f"[cyan]stowing leader → {np.round(target, 1).tolist()}[/]")
+            move_to(
+                self.leader,
+                target,
+                c["torque_limit"],
+                c["speed_deg_s"],
+                release=not c.get("hold_torque_during_run", True),
             )
-            move_pan(self.leader, self.stow_pan_deg, self.torque_limit, self.speed)
         except BaseException:
+            self.leader.bus.disable_torque()
             self.leader.bus.disconnect(disable_torque=False)
             self.leader = None
             raise
@@ -105,13 +108,34 @@ class LeaderStow:
     def __exit__(self, *exc) -> None:
         if self.leader is None:
             return
+        c = self.cfg
         try:
-            if self.original_pan is not None:
-                console.print(f"[cyan]restoring leader pan → {self.original_pan:+.1f} deg[/]")
-                move_pan(self.leader, self.original_pan, self.torque_limit, self.speed)
+            console.print("[cyan]returning leader to rest[/]")
+            move_to(
+                self.leader,
+                np.asarray(c["rest_pose_deg"], dtype=float),
+                c["torque_limit"],
+                c["speed_deg_s"],
+                release=True,
+            )
         finally:
+            self.leader.bus.disable_torque()
             self.leader.bus.disconnect(disable_torque=False)
             self.leader = None
+
+
+def _save_pose(key: str, pose: np.ndarray, path: Path = CONFIG) -> None:
+    """Replace one ``key: ...`` line in the yaml, keeping the comments."""
+    lines = Path(path).read_text().splitlines()
+    value = "[" + ", ".join(f"{v:.1f}" for v in pose) + "]"
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}:"):
+            comment = line[line.index("#") :] if "#" in line else ""
+            lines[i] = f"{key}: {value}" + (f"  {comment}" if comment else "")
+            break
+    else:
+        lines.append(f"{key}: {value}")
+    Path(path).write_text("\n".join(lines) + "\n")
 
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -119,24 +143,33 @@ app = typer.Typer(add_completion=False, help=__doc__)
 
 @app.command()
 def main(
-    dry_run: bool = typer.Option(False, "--dry-run", help="only print current and stow pan"),
-    stow: bool = typer.Option(False, "--stow", help="rotate to the stow pan and leave it there"),
-    restore_pan: float | None = typer.Option(None, help="rotate pan to this angle and release"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="print the present, stow and rest poses"),
+    teach: bool = typer.Option(False, "--teach", help="save the present pose as the stow pose"),
+    teach_rest: bool = typer.Option(False, "--teach-rest", help="save the present pose as rest"),
+    stow: bool = typer.Option(
+        False, "--stow", help="move to the stow pose (torque released after)"
+    ),
+    rest: bool = typer.Option(False, "--rest", help="move to the rest pose and release"),
 ) -> None:
-    """Inspect or move the leader's pan (the harness does stow/restore automatically)."""
-    s = LeaderStow.from_config()
-    leader = connect_leader(s.port, s.leader_id)
+    """Inspect, teach or move the leader (the harness stows/restores automatically)."""
+    cfg = load_config()
+    leader = connect_leader(cfg["port"], cfg["leader_id"])
     try:
         here = bus_pos(leader)
-        typer.echo(f"leader pose deg {np.round(here, 1).tolist()}  stow pan {s.stow_pan_deg:+.1f}")
-        if dry_run:
-            return
-        if stow:
-            move_pan(leader, s.stow_pan_deg, s.torque_limit, s.speed)
-        elif restore_pan is not None:
-            move_pan(leader, restore_pan, s.torque_limit, s.speed)
-        time.sleep(0.2)
-        typer.echo(f"now pan {bus_pos(leader)[0]:+.1f} deg, torque off")
+        typer.echo(f"present {np.round(here, 1).tolist()}")
+        typer.echo(f"stow    {np.round(stow_pose(cfg), 1).tolist()}")
+        typer.echo(f"rest    {np.round(cfg['rest_pose_deg'], 1).tolist()}")
+        if teach:
+            _save_pose("stow_pose_deg", here)
+            typer.echo("saved present pose as stow_pose_deg")
+        elif teach_rest:
+            _save_pose("rest_pose_deg", here)
+            typer.echo("saved present pose as rest_pose_deg")
+        elif stow or rest:
+            target = stow_pose(cfg) if stow else np.asarray(cfg["rest_pose_deg"], dtype=float)
+            move_to(leader, target, cfg["torque_limit"], cfg["speed_deg_s"], release=True)
+            time.sleep(0.2)
+            typer.echo(f"now {np.round(bus_pos(leader), 1).tolist()}, torque off")
     finally:
         leader.bus.disconnect(disable_torque=False)
 

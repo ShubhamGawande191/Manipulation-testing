@@ -1,10 +1,15 @@
-# Leader stow: before a live policy / survey / gap run the leader rotates its pan to its LEFT
-# (away from the follower) so the follower has room. Survey pose 16 (2026-10-18) stalled
-# 5.9 deg short on pan near (0.12, +0.18, 0.07): the follower hit the leader.
-# Pan is absolute, in the leader's LeRobot degrees (rest is about -3). Positive = leader's left
-# (verify visually with `uv run leader-stow --dry-run` first).
+# Leader stow: before a live policy / survey / gap run the leader moves out of the follower's way;
+# afterwards it returns to its rest pose. Survey pose 16 (2026-10-18) stalled 5.9 deg short on pan
+# near (0.12, +0.18, 0.07): the follower hit the leader.
+#
+# Poses are 6 values in the leader's LeRobot units: [pan, lift, elbow, wrist_flex, wrist_roll] deg,
+# gripper 0..100. POSITIVE pan = the leader's RIGHT (toward the follower) - checked 2026-10-18.
+# Teach by hand (torque off): `uv run leader-stow --teach` (stow) / `--teach-rest`.
 port: /dev/so101_leader
 leader_id: my_so101_leader
-stow_pan_deg: 60.0
-torque_limit: 300      # permille: gentle, yields if touched
+stow_pose_deg: null          # null -> rest pose with pan = default_stow_pan_deg
+default_stow_pan_deg: -60.0  # the leader's left, away from the follower
+rest_pose_deg: [-3.1, -107.0, 96.6, 77.3, -85.1, 1.5]
+torque_limit: 300            # permille: gentle, yields if touched
 speed_deg_s: 30.0
+hold_torque_during_run: true # a taught pose may not be gravity-stable without torque
