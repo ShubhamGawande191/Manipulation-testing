@@ -171,3 +171,11 @@ The calibration files in `~/.cache/huggingface/lerobot/calibration/` are untouch
   elbow while the shoulder was still raised (last reach ended at lift ≈ −3°), and sim confirms the
   fingers hit the table at ~47° of the fold. Fixed: parking now glides to HOME first (all joints), then
   folds. Parking ticks are logged to telemetry (`event="park"`).
+- **Cap-DR retrain** `runs/ppo_reach/pinc_cap_3M` (vel cap U(0.5, 1.0) rad/s): env eval 96 % / 96 %; sim
+  harness 94 % at 0.5 rad/s (old policy: 97 %). Real, same 20 targets (`runs/harness/20261018-123725`):
+  **19/20**. The miss (target 0.214, −0.039, 0.142, closest to the base) is a policy fixed point: it
+  freezes 5.9 cm away with near-zero actions. **Sim reproduces it on the same target (5.7 cm)**, so
+  the twin predicts the real failure, not only the successes. Parking via HOME: no residuals, 463
+  park ticks logged.
+- **Decision:** the deployed reach policy stays `runs/ppo_reach/pinc_box_3M` (real 20/20, sim 97 % at
+  0.5 rad/s). The integration-at-cap fix was what mattered; cap DR added nothing measurable.
