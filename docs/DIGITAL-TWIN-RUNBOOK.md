@@ -327,6 +327,89 @@ uv run harness reach --backend sim --policy runs/ppo_reach/<name>/reach.onnx --r
 uv run harness reach --backend real --live --max-vel 0.5 ...   # operator present
 ```
 
+### 10a. Reach policy recipe (what works on the real arm)
+
+Zero-shot sim2real reach: PPO in MuJoCo, exported to ONNX, run by the harness. The deployed policy
+is **`pinc_box_3M`**: sim 95 % with DR / 100 % without; real arm 20/20 at 0.5 rad/s, and 20/20 at
+1.0 rad/s with `--settle` (median 0.42 cm, p90 0.83 cm from the target, in twin coordinates).
+
+**Files.** Env and the shared obs/command code: `sim/envs/reach.py`. DR: `sim/randomize.py`.
+Training: `sim/train_reach.py`. Export: `sim/export.py`. Deploy: `harness/policies/onnx_reach.py`.
+Model: `sim/assets/so101/scene_pinc.xml` (PincOpen). Joint map: `config/sim2real.yaml`.
+
+**Task** (`sim/envs/reach.py`):
+
+| Item | Value |
+|---|---|
+| Control | 50 Hz, 4 s episodes (200 steps) |
+| Action | `Box(-1, 1, (5,))`, a joint-position *delta* per arm joint: `ACTION_SCALE` = 0.02 rad/tick = **1.0 rad/s** at a = 1. The gripper is held open (−1.833 rad) |
+| Command | `integrate_command(q_cmd, a, box, max_step)`: clip to the joint box (limits − 0.05 rad), then to the speed cap. **The same function runs in training and at deploy**, with `max_step` = the harness `--max-vel` |
+| Observation (24) | q (5), dq (5), last action (5), EE position (3), target (3), target − EE (3). Built by `build_obs`, shared with deploy. Normalized with the training `VecNormalize` stats, which are stored in `policy_meta.json` |
+| Targets | FK of random joints within 80 % of each range, kept inside `TARGET_BOX` (base frame: x 0.10–0.40, y −0.25–0.25, z 0.02–0.30 m). **One sampler for training and the harness** |
+| Reset | HOME `[0, −1.57, 1.57, 0, 0]` + U(±0.1 rad) per joint |
+| Reward | `−d + (1 − tanh(d / 0.05)) − 0.01‖a − a_prev‖² − 0.001‖dq‖² + 0.5·[d < 2 cm]` (d = EE–target distance) |
+| Success | d < 2 cm at the end of the episode |
+
+**Domain randomization** (`DRConfig`, applied fresh from nominal on every reset):
+
+| Randomized | Range | Notes |
+|---|---|---|
+| Actuator kp and kv | × U(0.8, 1.2) | one factor per joint, kp and kv together |
+| Joint damping | × U(0.7, 1.3) | |
+| Joint friction loss | × U(0.5, 2.0) | |
+| Armature | × U(0.8, 1.2) | |
+| Link masses and inertias | × U(0.9, 1.1) | per body |
+| Extra mass on the gripper | U(0, 0.09) kg | the model has 0.212 kg past the wrist; the real gripper + camera weigh ~0.2–0.3 kg |
+| Action delay | {0, 1, 2} ticks | 0–40 ms |
+| Measurement noise | q N(0, 0.005 rad), dq N(0, 0.05 rad/s) | |
+| Per-episode joint bias | U(±0.02 rad) on measured q | calibration error |
+| Speed cap | U(0.5, 1.0) rad/s per episode | **added after `pinc_box_3M`** (in `pinc_cap_3M`, `pinc_fit_3M`); see results |
+
+**PPO** (Stable-Baselines3, `sim/train_reach.py`): 12 `SubprocVecEnv` workers, `n_steps` 1024
+(rollout 12 288), `batch_size` 2048, 10 epochs, γ 0.99, λ 0.95, learning rate 3e-4 decaying
+linearly, clip 0.2, entropy 0, `target_kl` 0.02, MLP 256×256 for policy and value, `VecNormalize`
+(observations and rewards, clip 10). 3 M steps take ~17 min on the laptop CPU. Evaluation: every
+100 k steps on 50 DR episodes; at the end 100 episodes with and without DR.
+
+```bash
+uv sync --extra sim --extra dev
+uv run sim-train-reach --out runs/ppo_reach/<name>              # 3M steps, DR on
+uv run sim-train-reach --out runs/ppo_reach/<name> --actuator-fit   # nominal = config/actuator_fit.yaml
+# -> runs/ppo_reach/<name>/reach.onnx + policy_meta.json (obs stats, action scale, scene,
+#    gripper hold, sim/repo commit, DR, evaluation); the loader refuses a scene/gripper mismatch
+uv run harness reach --backend sim --policy runs/ppo_reach/<name>/reach.onnx --random 100 --dr
+uv run harness reach --backend sim ... --actuator-fit config/actuator_fit.yaml   # another twin
+```
+
+**Deploy, in this order** (operator present; the leader stows to its left on its own):
+
+```bash
+uv run harness reach --backend real --policy <p>/reach.onnx --random 5                       # dry run: read-only
+uv run harness reach --backend real --policy <p>/reach.onnx --random 5 --live --max-vel 0.5
+uv run harness reach --backend real --policy <p>/reach.onnx --random 20 --live --max-vel 1.0 --settle
+uv run gap closed-loop runs/harness/<real_run> runs/harness/<sim_run>   # does the twin agree?
+```
+
+`--max-vel` above 1.0 doesn't make these policies faster: 1.0 rad/s is their full step. The
+oscillation guard is on by default for real runs.
+
+**Results that decided the recipe** (same 20 targets, `--settle --max-vel 1.0` unless noted):
+
+| Policy | Trained on | Sim (DR / no DR) | Real arm |
+|---|---|---|---|
+| `pinc_box_3M` | nominal twin + DR above (no speed-cap DR) | 95 % / 100 % | **20/20**, median 0.42 cm, calm |
+| `pinc_cap_3M` | + speed-cap DR | 96 % / 96 % | 19/20 (early 20-target run, not `--settle`) |
+| `pinc_fit_3M` | twin with the v2 actuator fit as nominal | 98 % / 100 % | 17/20, median 0.62 cm, **hunts** |
+
+- **Lesson (train on the broad twin, not the fit):** the actuator fit predicts open-loop replay
+  well, yet its policy hunted on the real arm. Wide DR around the nominal model transfers better.
+  Check any new twin closed-loop (`gap closed-loop`) before training on it.
+- **Lesson (speed cap):** integrate the policy's command at the deploy cap (`max_step`). Without
+  it, the first real runs at 0.5 rad/s went 4/5.
+- **Caveat:** the accuracy numbers are in twin coordinates (FK of the measured joints). The wrist
+  camera calibration (§7) found encoder offsets of ~−5° (elbow) and ~−4.6° (wrist_flex), so the
+  real fingertip error is larger until those are applied to `config/sim2real.yaml`.
+
 - **Real backend safety** (`harness/backend.py` + `hw/follower.py`, shared with teleop):
   - A **dry run is read-only**: it opens the bus only, with no register writes and no torque change.
   - **Live** runs turn torque on joint by joint with Goal = Present and P=24 on lift and elbow.
@@ -396,6 +479,15 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 5. **End-effectors:** follow §4. Weigh them, take photos, and confirm the mount orientation with the
    operator.
 6. **Cameras:** follow §6, one by-path entry per camera.
+7. **Calibrate with the wrist camera, not touches** (§7): `camcal-wrist` per arm, with the board
+   placed where that arm reaches it comfortably. The same session gives the joint offsets.
+   Both arms seeing the same board pose gives the arm-to-arm transform.
+8. **Reach policy per arm** (§10a): one training run per gripper type is enough when the arms are
+   identical. Retrain if the gripper (mass, tool length) or the joint map differs. Mirror
+   `TARGET_BOX` in y for an arm mounted facing the other way.
+9. **Order of work that paid off here:** calibration check → teleop → joint map + live twin →
+   intrinsics → wrist-camera extrinsics → policy in sim → dry run → slow live run → settle run →
+   closed-loop twin check.
 
 ## Status of this setup (home bench)
 
