@@ -1,0 +1,81 @@
+# Lab notebook
+
+Dated entries: what we tried, what came out (with n and intervals), what was wrong, and why we
+decided what we did. This is the raw material for the blog posts; the runbook holds the procedures,
+`.colony/tasks.yaml` holds what's next. Negative results and our own mistakes go in here too.
+
+## 2026-10-20
+
+**Fingertip accuracy, run 3** (`runs/accuracy/20261020-170433_real`, 5 corners × 4 approaches).
+In-plane error per corner: 10.5 mm median raw → 4.9 mm after the settle trim; play between
+approach directions 3.1 → 1.3 mm. All 20 arrivals improved. Leftover: a 2–7 mm bias along base x,
+same sign at every corner, larger at the far ones. Likely the fingertip model or the board
+estimate, not the servo. Not yet shown: needs the ruler check of the closed fingertip.
+
+**Insertion factor study (MuJoCo), three mistakes before a valid run.**
+1. Protocol: the descent started while the soft servo was still moving, and the trim was frozen
+   during the descent. "Soft servo + trim" read 0 %; fixed, it reads 100 %.
+2. Friction: MuJoCo's default μ = 1.0 has a 45° friction angle, the same as the chamfer's slope,
+   so a peg couldn't slide down it (μ ≥ tan 45°). Now μ = 0.35 (PLA on PLA). That was reasoning,
+   not an observation: at the time the ramps were also reversed (bug 4), so the chamfer couldn't
+   have worked either way.
+3. Contacts: with the default 5 ms step and soft contacts, the position-controlled arm pushed the
+   peg 2–4 mm into the walls, so episodes "inserted" through them. Caught because 1 mm perception
+   error at 1 mm clearance gave 69 % where geometry allows ~15 %. Now 1 ms + stiff contacts,
+   penetration < 0.1 mm, same result at 0.5 ms; every sweep checks penetration and flags itself
+   invalid above 0.2 mm. Earlier sweep files are listed as invalid in `runs/insertion/README.md`.
+
+4. Chamfer: the four ramp boxes were rotated the wrong way (surface normal pointing away from the
+   hole). With 100 paired episodes, chamfer 0 vs 1 changed 1-6 outcomes (McNemar p 0.5-1.0):
+   "the chamfer does nothing" would have been a confident, wrong finding. Caught by asking why a
+   1 mm chamfer didn't widen the capture window, then printing the ramp normals. Now a test checks
+   that a 1.2 mm offset jams without the chamfer and inserts with it.
+
+Also found with the trace: from the base side, the stiff arm can land on the wall top up to
+~2.6 mm short and **drag the peg across the top face into the hole** (the blocked arm's joint
+errors push the tip sideways). Physically plausible for a position-controlled arm, direction-
+dependent; a hypothesis for the printed-peg test, not a finding yet.
+
+Lesson: a sim result that beats a back-of-the-envelope bound is a bug until shown otherwise; so is
+a design change (a chamfer) that changes nothing.
+Sweeps now print 95 % Wilson intervals, use paired episodes (episode i draws the same errors in
+every row), and `insertion-study compare` runs an exact McNemar test.
+
+**Insertion factor study, first valid result** (stiff contacts, correct ramps, 100 paired episodes per
+cell; `runs/insertion/sweep_20261020-182557.json` chamfer 0, `-183359.json` chamfer 1). 95 % Wilson
+intervals:
+
+| factors | 1 mm, no chamfer | 1 mm, 1 mm chamfer | 2 mm, no chamfer | 2 mm, 1 mm chamfer |
+|---|---|---|---|---|
+| ideal / lag 68 ms | 100 [96-100] | 100 [96-100] | 100 [96-100] | 100 [96-100] |
+| 2 deg deadband or soft servo, no trim | 0 [0-4] | 0 [0-4] | 0 [0-4] | 0 [0-4] |
+| same + settle trim | 100 [96-100] | 100 [96-100] | 100 [96-100] | 100 [96-100] |
+| perception error 1 mm | 34 [25-44] | 81 [72-87] | 73 [64-81] | 95 [89-98] |
+| perception error 2 mm | 12 [7-20] | 40 [31-50] | 35 [26-45] | 63 [53-72] |
+| all measured factors + trim | 24 [17-33] | 75 [66-82] | 62 [52-71] | 92 [85-96] |
+
+- Once the trim fixes the controller, perception error decides 1 mm vs 2 mm.
+- The chamfer is the biggest lever: paired McNemar, outcomes changed 47-0, 22-0, 28-0, 29-1, 51-0,
+  30-0 in its favour. Geometry predicts ~75 % for 1 mm error with a +-1.5 mm window; measured 81 %.
+- 2 of 400 chamfer successes went 0.21/0.25 mm into a wall; counting them as failures moves a rate
+  by at most 1 point.
+- Still a MuJoCo claim: perception error is modelled as centred Gaussian noise, the arm's lateral
+  give comes from the twin. The printed-peg test decides it.
+
+**Intrinsic insertion challenge + `intrinsic-core` agent skills (read 2026-10-20).** What the winning
+teams did matches what the insertion study says:
+- Perception and action split: a CAD-based foundation pose model for sub-mm part poses (the open repo wires
+  FoundationPose, which needs RGB **and depth**), then classical insertion (spiral search, alignment
+  correction) on real force-torque feedback. Our study: once the controller is fixed, perception error
+  decides 1 vs 2 mm, and a chamfer buys the most; a search-on-contact strategy is the next baseline to add.
+- Their force-control rule of thumb: the target contact force must exceed 2x the sensor's deadband, and the
+  arm must settle before taring. Our analog: the servo's ~2 deg approach-dependent stop and friction set the
+  smallest contact the following-error "sensor" can see; measure it before relying on it.
+- The sim-to-real gap they hit was contact (force, snap-fit clicks, cables) - the same place our sim broke.
+- Adopted the structure of their agent skills (hub + progressive-disclosure references, input-aware decision
+  trees, paired guardrails, pre-action checkpoint, retry caps, contrastive failing/succeeding tables,
+  completion criteria) for `.claude/skills/so101-*`, filled with this repo's own lessons.
+
+**Decisions.**
+- No servo teardown: the blog gets an animated schematic from public specs + our register reads.
+- No weighing of links: keep model masses, randomise them in training, say so.

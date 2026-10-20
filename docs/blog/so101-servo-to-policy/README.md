@@ -29,8 +29,8 @@ twin: shoulder to elbow 116 mm, elbow to wrist 135 mm, wrist to closed fingertip
 | wrist_flex | 291 g |
 | wrist_roll | 212 g (gripper + camera) |
 
-*Masses are the model's (Menagerie links + an estimated 212 g for gripper and camera).
-TODO: weigh the links and the gripper.*
+*Masses are the model's (Menagerie links + an estimated 212 g for gripper and camera). We didn't
+weigh them; training randomises every link mass by ±10 % and adds 0–90 g at the gripper instead.*
 
 ![Gravity torque budget](figs/01_torque_budget.svg)
 
@@ -40,8 +40,8 @@ its capacity. The wrist is nearly free.
 
 ## 2. Inside the STS3215
 
-*TODO: teardown photo / diagram: DC motor, 4-stage metal gear train, output shaft, magnetic
-encoder, controller board.*
+*TODO: animated schematic (motor → gear train → output shaft + encoder → P/D loop with I = 0),
+from public specs and our register reads, driven by the measured step response.*
 
 What the follower uses (12 V version, STS3215-C018): about **30 kg·cm (≈2.9 N·m) stall torque**,
 a **1:345 metal gearbox**, and a **12-bit magnetic encoder** on the output shaft (4096 steps per
@@ -110,11 +110,32 @@ TODO: the closed-loop twin table (`gap closed-loop`) as a figure.
 
 ## 6. In the world: where the fingertip really goes
 
-TODO after the second `tip-accuracy` run (raw vs settle-trimmed). First run: at a centre target
-the fingertip ended up 12 mm short and 13.5 mm low of where the arm meant to put it, and touched
-the board. About half of that is the stopping error above (6–10 mm, visible in the encoders); the
-rest is the camera's estimate of the board (a few mm) and the fingertip model (~6 mm longer than
-modelled). Repeatability between opposite approaches: **1.5 mm**.
+The arm hovers its fingertip 40 mm over five corners of a calibration board, arriving from four
+directions (from the base, the far side, the left, the right), and the wrist camera measures where
+the fingertip really is. Each arrival is measured twice: as the servos leave it, and after a
+**settle trim**, a slow software integral loop on top of the servo (bounded to ±4°, 0.15°
+deadband) that supplies the I term the servo doesn't have.
+
+![Fingertip error, raw vs settle-trimmed](figs/06_settle_trim.svg)
+
+| per corner (mean of 4 approaches) | error in the board plane, median (max) | play between approach directions |
+|---|---|---|
+| as the servos leave it | 10.5 mm (11.2) | 3.1 mm |
+| after the settle trim | **4.9 mm (7.3)** | **1.3 mm** |
+
+The trim halves the error and removes most of the direction dependence. What's left is not the
+servo: it's a bias of 2–7 mm along the arm's reach, the same sign at every corner and larger at
+the far ones. That pattern points to the model (the fingertip is ~6 mm longer than modelled, from
+an earlier run that touched the board) and to the camera's estimate of the board.
+
+So the error budget at the fingertip, stretched out:
+
+| Source | Size | Fix |
+|---|---|---|
+| stopping error (I = 0 + friction, approach-dependent) | 6–10 mm | settle trim |
+| sag under gravity | included above at rest | settle trim, or a stiffer P |
+| fingertip / tool model | ~2–7 mm, one direction | measure the tool; fit it in calibration |
+| repeatability after the trim | 1.3 mm | this is the floor |
 
 ## 7. Is it the policy, the controller, the mechanism, calibration or vision?
 

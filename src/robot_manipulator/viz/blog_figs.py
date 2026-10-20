@@ -278,7 +278,8 @@ def fig_trim(plt) -> Path | None:
         ax.set_title(title, fontsize=10)
     axes[0].set_yticks(y, labels)
     axes[0].invert_yaxis()
-    axes[0].legend(loc="lower right", fontsize=8)
+    fig.legend(*axes[0].get_legend_handles_labels(), ncol=2, loc="lower center", fontsize=8)
+    fig.subplots_adjust(bottom=0.1)
     med_raw = np.median([1000 * np.linalg.norm(v["raw"][:2]) for _, v in pairs])
     med_trm = np.median([1000 * np.linalg.norm(v["trimmed"][:2]) for _, v in pairs])
     fig.suptitle(

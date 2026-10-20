@@ -181,9 +181,10 @@ uv run camcal intrinsics <name>              # -> config/camera_intrinsics/<name
 - **Lock the exposure.** Auto-exposure plus "dynamic framerate" made the colours and brightness
   drift (mean 85). Locked at exposure 300, gain 10 and white balance 3800 K, the mean is 114 and
   stable. The settings reset on replug, so re-run `cam-setup`.
-- **The board here:** ChArUco **5×7, `DICT_7X7_50`**, marker ids 0–16, set in
-  `config/charuco_board.yaml`. Square size **TODO: measure** (40 mm assumed); it only matters
-  for extrinsics.
+- **The board here:** ChArUco **5×7, `DICT_4X4_50`**, reprinted 2026-10-20 on a flat plate
+  (the old `DICT_7X7_50` paper board was wavy). Squares 33.2 mm, markers 21.6 mm, set in
+  `config/charuco_board.yaml`; the joint wrist-camera fit (`solve-joint --fit-scale`) checks the
+  print scale.
 - **Pass:** intrinsics RMS under about 0.5 px with 15 or more views, fx ≈ fy, and principal point
   near the image centre.
 - **Lesson (old intrinsics):** the old `camera_intrinsics.json` (fx 9697 / fy 2109, RMS 5 px) was a
@@ -272,6 +273,36 @@ A touch method that needs no extra hardware:
   save the raw joints and check the side lengths.
 - **Bimanual:** do it once per arm on the same board pose. That also gives the **arm-to-arm
   transform** for the shared MJCF.
+
+### 7b. Fingertip accuracy + play (`tip-accuracy`, about 15 min)
+
+Checks the whole chain (joint map, servo stopping error, fingertip model, board estimate) in the
+world frame. The arm hovers the closed fingertip 40 mm over board corners the wrist camera can
+measure, from four approach directions (base, far, left, right), and photographs each arrival
+twice: raw, then after the settle trim. The difference between approach directions is the play
+seen at the tool.
+
+```bash
+uv run tip-accuracy plan                        # targets the wrist camera can see (sim only)
+uv run tip-accuracy run --backend real --live   # operator present; contact guard on the approach
+uv run tip-accuracy analyze runs/accuracy/<ts>_real
+uv run blog-figs --only trim                    # raw vs trimmed dumbbell
+```
+
+- **Run 3 (2026-10-20, offsets applied, 5 corners × 4 approaches, no contacts):**
+
+  | | in-plane error, median (max) | play at tool, median | spread per corner |
+  |---|---|---|---|
+  | raw | 10.5 mm (11.2) | 3.1 mm | 1.3–4.8 mm |
+  | settle trim | **4.9 mm (7.3)** | **1.3 mm** | 1.2–1.5 mm |
+
+- **Lesson (what the trim removes):** the trim cancels the approach-dependent stopping error (play
+  3.1 → 1.3 mm, spread ≤ 1.5 mm). What's left is a **bias of −2 to −7 mm along base x, the same
+  sign at every corner**, growing toward the far corners. That's a model or calibration error
+  (fingertip length, board estimate), not the servo: repeatability is already 1.3 mm.
+- **Lesson (runs 1–2):** at 20 mm hover the fingertip touched the board (servos stop 6–10 mm
+  short, fingertip ~6 mm longer than modelled). The contact guard must be off during the trim:
+  the trim's own corrections look like a rise in following error.
 
 ## 8. Scene objects (fixtures, reset rig) — *in progress*
 
@@ -514,6 +545,7 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 | 5 Joint map | ✅ `calibrated: true` | live twin, all signs +1 / offsets 0, gripper closed ↔ 7 |
 | 6 Cameras | ✅ stable paths, locked exposure, intrinsics 53 views / 9 regions, rms 0.52 px | `config/camera_intrinsics/workspace.yaml` |
 | 7 Extrinsics | ✅ overhead camera (run 2, PnP 0.18 px) + **encoder offsets applied** (two wrist-camera runs agree; lift +4.6, elbow −4.75, wflex −4.58°) | `config/extrinsics/workspace.yaml`; `config/sim2real.yaml`; `runs/wristcal/joint_*.json` |
+| 7b Fingertip accuracy | 🟡 run 3: raw 10.5 mm → trimmed **4.9 mm** median, play 1.3 mm; −x bias left (tool model / board) | `runs/accuracy/20261020-170433_real/report.json` |
 | 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
 | 9 Actuator fit | 🟡 open-loop OK, **closed-loop not yet**: no twin (nominal / v2 / sag-pinned v3) reproduces 'box calm, fit hunts' (`gap closed-loop`). First fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
