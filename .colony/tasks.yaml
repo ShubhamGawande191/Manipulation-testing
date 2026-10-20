@@ -106,6 +106,26 @@ tasks:
     status: todo
     detail: The closed form returns self-colliding poses for ~9 % of random targets (cuRobo comparison).
     updated: 2026-10-20
+  - id: upstream-curobo-mimic
+    title: File cuRobo issue - RobotBuilder device assert with mesh-less mimic leader (repro + root cause ready)
+    owner: you
+    status: todo
+    detail: docs/UPSTREAM-BUGS.md #1 has the repro, root cause and suggested fix; a PR is possible.
+    link: docs/UPSTREAM-BUGS.md
+    updated: 2026-10-20
+  - id: upstream-converter-limits
+    title: Issue + small PR for mjcf-urdf-simple-converter - unlimited hinges get limits [0, 0]
+    owner: you
+    status: todo
+    detail: docs/UPSTREAM-BUGS.md #2 - write type="continuous" when jnt_limited is 0; add a test.
+    link: docs/UPSTREAM-BUGS.md
+    updated: 2026-10-20
+  - id: upstream-curobo-selfcoll
+    title: Minimal repro for cuRobo IK failing with self_collision_check=False (our config only)
+    owner: agent
+    status: todo
+    link: docs/UPSTREAM-BUGS.md
+    updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions
     owner: you
