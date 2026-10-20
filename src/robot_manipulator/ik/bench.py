@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import typer
@@ -141,6 +142,52 @@ def reach_map(
             )
 
 
+def target_pose(ik: AnalyticIK, p: np.ndarray, phi: float, roll: float = ROLL, q=None):
+    """Full fingertip pose (position, quaternion wxyz) for a (position, pitch, roll) target.
+
+    The SO-101 has 5 joints: the fingertip orientation is fixed by pan (facing the target), the
+    pitch (lift + elbow + wrist_flex) and the roll, so FK at [pan, pitch, 0, 0, roll] gives it.
+    This is the pose an off-the-shelf 6-DOF solver (cuRobo) is asked for."""
+    import mujoco
+
+    g = ik.g
+    if q is None:
+        pan = g.pan_sign * np.arctan2(p[1] - g.pan_xy[1], p[0] - g.pan_xy[0])
+        q = np.array([pan, phi, 0.0, 0.0, roll, 0.0])
+    ik.fk._pose(np.asarray(q, dtype=float))
+    R = ik.fk.d.xmat[ik.fk.body].reshape(3, 3)  # the fingertip frame = the site body's frame
+    quat = np.zeros(4)
+    mujoco.mju_mat2Quat(quat, R.ravel())
+    return np.asarray(p, dtype=float), quat
+
+
+@app.command("export-targets")
+def export_targets(n: int = 400, seed: int = 1, out: Path = OUT / "targets.json") -> None:
+    """Scenario targets as full poses (for solvers in other environments, e.g. cuRobo)."""
+    ik = AnalyticIK()
+    data = {"roll_rad": float(ROLL), "scenarios": {}}
+    for scen, targets in scenarios(ik, n, seed).items():
+        rows = []
+        for p, phi in targets:
+            ref = ik.solve(p, phi, ROLL)  # closed-form reference (None = unreachable)
+            # reachable: the orientation of the reference solution itself (it may reach back
+            # over the pan axis, turning the tool frame 180 deg about vertical); else facing it
+            pos, quat = target_pose(ik, p, phi, q=ref)
+            rows.append(
+                {
+                    "pos": pos.tolist(),
+                    "quat_wxyz": quat.tolist(),
+                    "pitch": float(phi),
+                    "reachable": ref is not None,
+                    "q_ref": None if ref is None else ref.tolist(),
+                }
+            )
+        data["scenarios"][scen] = rows
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(data))
+    typer.echo(f"-> {out}")
+
+
 @app.command("train-nn")
 def train_nn(n: int = 120_000, epochs: int = 60, seed: int = 0) -> None:
     from robot_manipulator.ik.learned import LearnedSeed, make_dataset
@@ -186,6 +233,21 @@ def run(n: int = 400, seed: int = 1) -> None:
                 f"{scen:8} {name:14} {r['success']:8.3f} {r['time_ms_median']:7.2f} "
                 f"{r['time_ms_p95']:7.2f} {r['iters_median']:6.0f} {extra:>24}"
             )
+    cu_path = OUT / "curobo_results.json"  # from integrations/curobo/bench_curobo.py
+    if cu_path.exists():
+        cu = json.loads(cu_path.read_text())
+        meta = cu.pop("_meta", {})
+        typer.echo(
+            f"cuRobo {meta.get('curobo', '?')} on {meta.get('gpu', '?')} "
+            f"(32 seeds, full 6-DOF pose; batch = all targets in one call):"
+        )
+        for scen, r in cu.items():
+            typer.echo(
+                f"{scen:8} {'curobo':14} {r['success']:8.3f} {r['time_ms_median']:7.2f} "
+                f"{r['time_ms_p95']:7.2f} {'':>6} batch {r['batch_success']:.3f} "
+                f"{r['batch_ms_per_target']:.3f} ms/target"
+            )
+            report[scen]["curobo"] = r
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / f"bench_{datetime.now():%Y%m%d-%H%M%S}.json"
     path.write_text(json.dumps(report, indent=2) + "\n")

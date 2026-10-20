@@ -90,14 +90,21 @@ tasks:
   - id: curobo-install-ok
     title: OK the cuRobo install (CUDA PyTorch, several GB) for the IK comparison
     owner: you
-    status: todo
+    status: done
     detail: Apache-2.0. Needs a URDF matching our SO-101 + PincOpen MJCF; runs on the RTX 3060.
     updated: 2026-10-20
   - id: curobo-comparison
     title: Compare cuRobo (batched IK, collision-aware paths) on the same scenarios
     owner: agent
-    status: waiting
-    waits_for: curobo-install-ok
+    status: done
+    detail: 92.5 % single (14 ms), batch 0.73 ms/target; misses mostly self-colliding poses. docs/IK-BENCHMARK.md
+    link: docs/IK-BENCHMARK.md
+    updated: 2026-10-20
+  - id: collision-aware-ik
+    title: Closed-form IK that skips self-colliding branches (and the table)
+    owner: agent
+    status: todo
+    detail: The closed form returns self-colliding poses for ~9 % of random targets (cuRobo comparison).
     updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions

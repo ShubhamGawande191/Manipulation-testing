@@ -40,6 +40,7 @@ sim = [
     "onnx>=1.16",
     "onnxruntime>=1.18",
     "matplotlib>=3.8",
+    "mjcf-urdf-simple-converter>=0.3",
 ]
 dev = [
     "jupyterlab>=4.3",
@@ -57,6 +58,7 @@ sim-train-reach = "robot_manipulator.sim.train_reach:app"
 colony-feed = "robot_manipulator.viz.colony:app"
 camcal-wrist = "robot_manipulator.calib.wristcal:app"
 ik-bench = "robot_manipulator.ik.bench:app"
+urdf-export = "robot_manipulator.sim.urdf_export:app"
 harness = "robot_manipulator.harness.cli:app"
 twin = "robot_manipulator.harness.twin:app"
 cam-setup = "robot_manipulator.cameras:cam_setup_app"
