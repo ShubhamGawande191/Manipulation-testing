@@ -25,6 +25,7 @@ class RunContext:
     step: int  # control tick index within the attempt
     elapsed: float  # seconds since the attempt started
     t: float  # clock time
+    q_cmd: np.ndarray | None = None  # the last command sent (rad, CMD order); None before any
 
 
 class EndCondition(Protocol):
@@ -49,20 +50,69 @@ class TimeLimit:
 
 
 class JointReached:
-    """Success when every joint is within `tol` (rad, max-norm) of `target`."""
+    """Success when every joint (or each of `joints`) is within `tol` (rad, max-norm) of
+    `target`."""
 
     name = "joint_reached"
 
-    def __init__(self, target: np.ndarray, tol: float) -> None:
+    def __init__(
+        self, target: np.ndarray, tol: float, joints: tuple[int, ...] | None = None
+    ) -> None:
         self.target = np.asarray(target, dtype=np.float64)
         self.tol = tol
+        self.idx = slice(None) if joints is None else list(joints)
 
     def reset(self) -> None:
         pass
 
     def check(self, obs: Obs, ctx: RunContext) -> Verdict | None:
-        err = np.max(np.abs(np.asarray(obs["q"], dtype=np.float64) - self.target))
-        return "success" if err < self.tol else None
+        err = np.abs(np.asarray(obs["q"], dtype=np.float64) - self.target)[self.idx]
+        return "success" if np.max(err) < self.tol else None
+
+
+class ContactGuard:
+    """Failure when the arm stops following its command: unexpected contact or an obstruction.
+
+    Following error = last command - measured, per joint. It has a steady part (gravity sag,
+    servo lag while moving) that depends on the pose and the speed, so the guard learns a
+    baseline over ticks ``skip``..``skip + learn`` of the attempt and trips when any of ``joints``
+    exceeds it by ``rise`` rad for ``sustain`` consecutive ticks, in the direction of the command
+    (the joint is held back). Meant for slow final approaches; added after the fingertip pressed
+    a calibration board during the first accuracy run (2026-10-20).
+    """
+
+    name = "contact"
+
+    def __init__(
+        self,
+        rise: float = np.radians(1.5),
+        joints: tuple[int, ...] = (1, 2, 3),
+        skip: int = 5,
+        learn: int = 10,
+        sustain: int = 3,
+    ) -> None:
+        self.rise, self.joints = rise, list(joints)
+        self.skip, self.learn, self.sustain = skip, learn, sustain
+        self.reset()
+
+    def reset(self) -> None:
+        self._samples: list[np.ndarray] = []
+        self._base: np.ndarray | None = None
+        self._count = 0
+
+    def check(self, obs: Obs, ctx: RunContext) -> Verdict | None:
+        if ctx.q_cmd is None or ctx.step < self.skip:
+            return None
+        err = (np.asarray(ctx.q_cmd) - np.asarray(obs["q"]))[self.joints]
+        if self._base is None:
+            self._samples.append(err)
+            if len(self._samples) >= self.learn:
+                self._base = np.median(self._samples, axis=0)
+            return None
+        # held back = |error| grew beyond the baseline (either sign of motion)
+        grew = np.abs(err) - np.abs(self._base) > self.rise
+        self._count = self._count + 1 if grew.any() else 0
+        return "failure" if self._count >= self.sustain else None
 
 
 class EEReached:

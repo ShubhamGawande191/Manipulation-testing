@@ -42,7 +42,9 @@ from robot_manipulator.calib.wristcal import _Cams, board_from_camera, board_poi
 from robot_manipulator.sim.model import ASSET_DIR, JOINTS, apply_joint_couplings, joint_qpos_adr
 
 OUT_DIR = REPO / "runs" / "accuracy"
-HOVER_M = 0.02  # the camera-located board can sit a few mm below the arm-referenced one
+# 40 mm: the first run (20 mm) touched the board - servo sag (6-10 mm), a fingertip ~6 mm longer
+# than the model, the camera-located board a few mm low; also lets the wrist camera see more
+HOVER_M = 0.04
 APPROACH_M = 0.03
 LIFT_M = 0.02  # pre-poses this much higher than the target
 SAFE_M = 0.08  # transfer height above the board between targets
@@ -244,6 +246,9 @@ def analyze(session: Path) -> dict:
     tip_cam = tip_in_camera(fk)
     rows = []
     for a in s["arrivals"]:
+        if "wrist" not in a:  # contact on approach, or no camera
+            rows.append({**a, "error": "no image"})
+            continue
         g = cv2.imread(str(session / a["wrist"]), cv2.IMREAD_GRAYSCALE)
         try:
             R_cb, t_cb = measure(g, board, K, dist)
@@ -252,67 +257,75 @@ def analyze(session: Path) -> dict:
             continue
         e = tip_error_board(R_cb, t_cb, inner[a["corner_id"]], tip_cam)
         rows.append({**a, "err_board_m": e.tolist()})
-    report: dict[str, Any] = {"arrivals": rows, "targets": {}}
-    errs = []
-    for cid in sorted({r["corner_id"] for r in rows}):
-        rs = [r for r in rows if r["corner_id"] == cid and "err_board_m" in r]
-        if not rs:
-            continue
-        E = np.array([r["err_board_m"] for r in rs])
-        Q = np.array([r["q_rad"] for r in rs])
-        ap = {r["approach"]: i for i, r in enumerate(rs)}
-        pairs = [("from_base", "from_far"), ("from_left", "from_right")]
-        bl_tool = {
-            f"{a}-{b}": float(1000 * np.linalg.norm(E[ap[a], :2] - E[ap[b], :2]))
-            for a, b in pairs
-            if a in ap and b in ap
-        }
-        bl_enc = {
-            f"{a}-{b}": np.degrees(Q[ap[a], :5] - Q[ap[b], :5]).round(3).tolist()
-            for a, b in pairs
-            if a in ap and b in ap
-        }
-        mean = E.mean(0)
-        errs.append(mean)
-        report["targets"][str(cid)] = {
-            "mean_err_mm": (1000 * mean).round(2).tolist(),
-            "in_plane_mm": float(1000 * np.linalg.norm(mean[:2])),
-            "spread_mm": float(1000 * np.linalg.norm(E[:, :2] - mean[:2], axis=1).max()),
-            "backlash_tool_mm": bl_tool,
-            "backlash_encoder_deg": bl_enc,
-        }
-    if errs:
-        E = np.array(errs)
-        inp = 1000 * np.linalg.norm(E[:, :2], axis=1)
-        report["summary"] = {
-            "targets": len(errs),
-            "in_plane_mm_median": float(np.median(inp)),
-            "in_plane_mm_max": float(inp.max()),
-            "height_err_mm_median": float(1000 * np.median(E[:, 2] - s.get("hover_m", HOVER_M))),
-            "backlash_tool_mm_median": float(
-                np.median(
-                    [v for t in report["targets"].values() for v in t["backlash_tool_mm"].values()]
-                    or [np.nan]
-                )
-            ),
-        }
+    report: dict[str, Any] = {"arrivals": rows, "stages": {}}
+    hover = s.get("hover_m", HOVER_M)
+    for stage in ("raw", "trimmed"):
+        st = [r for r in rows if r.get("stage", "raw") == stage and "err_board_m" in r]
+        if st:
+            report["stages"][stage] = _stage_report(st, hover)
+    report["contacts"] = sum(1 for r in rows if r.get("contact"))
     (session / "report.json").write_text(json.dumps(report, indent=1))
     return report
 
 
+def _stage_report(rows: list[dict], hover: float) -> dict:
+    """Per target: mean error, spread over approaches, play between opposite approaches (at the
+    tool, from the camera; and in the encoders); plus a summary over targets."""
+    targets: dict[str, Any] = {}
+    errs = []
+    pairs = [("from_base", "from_far"), ("from_left", "from_right")]
+    for cid in sorted({r["corner_id"] for r in rows}):
+        rs = [r for r in rows if r["corner_id"] == cid]
+        E = np.array([r["err_board_m"] for r in rs])
+        Q = np.array([r["q_rad"] for r in rs])
+        ap = {r["approach"]: i for i, r in enumerate(rs)}
+        ok = [(a, b) for a, b in pairs if a in ap and b in ap]
+        mean = E.mean(0)
+        errs.append(mean)
+        targets[str(cid)] = {
+            "n": len(rs),
+            "mean_err_mm": (1000 * mean).round(2).tolist(),
+            "in_plane_mm": float(1000 * np.linalg.norm(mean[:2])),
+            "spread_mm": float(1000 * np.linalg.norm(E[:, :2] - mean[:2], axis=1).max()),
+            "play_tool_mm": {
+                f"{a}-{b}": float(1000 * np.linalg.norm(E[ap[a], :2] - E[ap[b], :2])) for a, b in ok
+            },
+            "play_encoder_deg": {
+                f"{a}-{b}": np.degrees(Q[ap[a], :5] - Q[ap[b], :5]).round(3).tolist() for a, b in ok
+            },
+        }
+    E = np.array(errs)
+    inp = 1000 * np.linalg.norm(E[:, :2], axis=1)
+    plays = [v for t in targets.values() for v in t["play_tool_mm"].values()]
+    return {
+        "targets": targets,
+        "summary": {
+            "targets": len(errs),
+            "in_plane_mm_median": float(np.median(inp)),
+            "in_plane_mm_max": float(inp.max()),
+            "height_err_mm_median": float(1000 * np.median(E[:, 2] - hover)),
+            "play_tool_mm_median": float(np.median(plays)) if plays else float("nan"),
+        },
+    }
+
+
 def _print_report(rep: dict) -> None:
-    for cid, t in rep["targets"].items():
+    for stage, st in rep["stages"].items():
+        typer.echo(f"--- {stage}")
+        for cid, t in st["targets"].items():
+            typer.echo(
+                f"corner {cid:>2}: error {t['mean_err_mm']} mm (in-plane {t['in_plane_mm']:.1f}), "
+                f"spread {t['spread_mm']:.1f} mm, play at tool "
+                + ", ".join(f"{k} {v:.1f}" for k, v in t["play_tool_mm"].items())
+            )
+        s = st["summary"]
         typer.echo(
-            f"corner {cid:>2}: error {t['mean_err_mm']} mm (in-plane {t['in_plane_mm']:.1f}), "
-            f"spread {t['spread_mm']:.1f} mm, play at tool {t['backlash_tool_mm']}"
+            f"{stage}: in-plane error median {s['in_plane_mm_median']:.1f} mm "
+            f"(max {s['in_plane_mm_max']:.1f}); height error {s['height_err_mm_median']:+.1f} mm; "
+            f"play at tool median {s['play_tool_mm_median']:.1f} mm"
         )
-    if "summary" in rep:
-        s = rep["summary"]
-        typer.echo(
-            f"in-plane error median {s['in_plane_mm_median']:.1f} mm (max "
-            f"{s['in_plane_mm_max']:.1f}); height error {s['height_err_mm_median']:+.1f} mm; "
-            f"play at tool (opposite approaches) median {s['backlash_tool_mm_median']:.1f} mm"
-        )
+    if rep.get("contacts"):
+        typer.echo(f"contacts detected: {rep['contacts']}")
 
 
 @app.command("analyze")
@@ -325,14 +338,16 @@ def analyze_cmd(session: Path) -> None:
 def run(
     backend: str = typer.Option("sim", help="sim | real"),
     live: bool = typer.Option(False, "--live/--dry-run"),
-    max_vel: float = typer.Option(0.4, help="rad/s cap for transfers"),
-    approach_vel: float = typer.Option(0.15, help="rad/s cap for the final approach"),
-    hold_s: float = typer.Option(1.0),
+    max_vel: float = typer.Option(0.5, help="rad/s cap for transfers"),
+    approach_vel: float = typer.Option(0.25, help="rad/s cap for the final approach"),
+    hold_s: float = typer.Option(0.6),
+    trim: bool = typer.Option(True, help="settle trim after arrival (photos before and after)"),
     plan_path: Path = typer.Option(OUT_DIR / "plan.json"),
     port: str = typer.Option("/dev/so101_follower"),
     stow_leader: bool = typer.Option(True, "--stow-leader/--no-stow-leader"),
 ) -> None:
-    """Visit every target from its four approaches; wrist image + joints at each arrival."""
+    """Visit every target from its four approaches; wrist image + joints at each arrival, before
+    ("raw") and after ("trimmed") the settle trim. The final approach has a contact guard."""
     import cv2
 
     from robot_manipulator.calib.camera import BOARD_CFG
@@ -340,9 +355,10 @@ def run(
     from robot_manipulator.harness.backend import LeRobotBackend, SimBackend
     from robot_manipulator.harness.cli import leader_clear
     from robot_manipulator.harness.policies.glide import GlideTo
+    from robot_manipulator.harness.policies.settle import SettleTrim
     from robot_manipulator.harness.runner import run_skill
     from robot_manipulator.harness.safety_layer import SafetyFilter
-    from robot_manipulator.harness.skill import JointReached, Skill, TimeLimit
+    from robot_manipulator.harness.skill import ContactGuard, JointReached, Skill, TimeLimit
     from robot_manipulator.harness.units import JointMap
     from robot_manipulator.sim.envs.reach import HOME_ARM
     from robot_manipulator.sim.model import joint_ranges, load_model
@@ -369,60 +385,75 @@ def run(
         raise typer.BadParameter("backend must be sim or real")
     cams = _Cams(("wrist",)) if backend == "real" else None
     arrivals: list[dict] = []
+    arm = (0, 1, 2, 3, 4)
 
-    def go(target, vel, tol=0.03, timeout=15.0) -> bool:
-        safety = SafetyFilter(lo=lo, hi=hi, margin=0.05, max_vel=vel, clock=clock)
-        sk = Skill(
-            "acc_glide",
-            GlideTo(target, max_vel=vel, hz=50.0),
-            [JointReached(target, tol=tol), TimeLimit(timeout)],
-            hz=50.0,
-        )
-        res = run_skill(sk, be, safety, goal={}, clock=clock)
+    def safety(vel):
+        return SafetyFilter(lo=lo, hi=hi, margin=0.05, max_vel=vel, clock=clock)
+
+    def go(target, vel, tol=0.03, timeout=15.0, guard=False) -> str:
+        """'ok', 'contact' or 'missed'."""
+        conds = [ContactGuard()] if guard else []
+        conds += [JointReached(target, tol=tol, joints=arm), TimeLimit(timeout)]
+        sk = Skill("acc_glide", GlideTo(target, max_vel=vel, hz=50.0), conds, hz=50.0)
+        res = run_skill(sk, be, safety(vel), goal={}, clock=clock)
         if backend == "real" and not live:
-            return True
+            return "ok"
+        if res.reason == "contact":
+            return "contact"
         err = np.abs(np.asarray(be.read()["q"]) - target)[:5].max()
-        return res.status == "success" or err < 0.1
+        return "ok" if res.status == "success" or err < 0.1 else "missed"
+
+    def hold_and_shoot(policy, ti: int, name: str, stage: str, q_t) -> dict:
+        sk = Skill(f"acc_{stage}", policy, [ContactGuard(), TimeLimit(hold_s)], hz=50.0)
+        res = run_skill(sk, be, safety(approach_vel), goal={}, clock=clock)
+        q = np.mean([np.asarray(be.read()["q"]) for _ in range(5)], axis=0)
+        a = {
+            "target": ti,
+            "corner_id": p["targets"][ti]["corner_id"],
+            "approach": name,
+            "stage": stage,
+            "q_rad": q.tolist(),
+            "q_cmd_rad": np.asarray(q_t).tolist(),
+            "contact": res.reason == "contact",
+        }
+        if cams is not None:
+            a["wrist"] = f"wrist_t{ti}_{name}_{stage}.png"
+            cv2.imwrite(str(out / a["wrist"]), cams.grab("wrist"))
+        return a
 
     try:
         with leader_clear(backend, live, stow_leader):
-            if not go(home, max_vel):
+            if go(home, max_vel) != "ok":
                 raise RuntimeError("HOME not reached")
             for ti, t in enumerate(p["targets"]):
                 q_t, safe = np.array(t["q"]), np.array(t["safe"])
-                if not go(safe, max_vel):
+                if go(safe, max_vel) != "ok":
                     typer.echo(f"target {ti}: safe pose not reached; stopping")
                     break
                 for name, pre in t["approaches"].items():
                     pre = np.array(pre)
-                    if not (go(pre, max_vel) and go(q_t, approach_vel, tol=0.02)):
-                        typer.echo(f"target {ti} {name}: not reached; skipping")
+                    if go(pre, max_vel) != "ok":
+                        typer.echo(f"target {ti} {name}: pre-pose not reached; skipping")
                         continue
-                    hold = Skill(
-                        "acc_hold",
-                        GlideTo(q_t, max_vel=approach_vel, hz=50.0),
-                        [TimeLimit(hold_s)],
-                        hz=50.0,
-                    )
-                    run_skill(
-                        hold,
-                        be,
-                        SafetyFilter(lo=lo, hi=hi, margin=0.05, max_vel=approach_vel, clock=clock),
-                        goal={},
-                        clock=clock,
-                    )
-                    q = np.mean([np.asarray(be.read()["q"]) for _ in range(5)], axis=0)
-                    a = {
-                        "target": ti,
-                        "corner_id": t["corner_id"],
-                        "approach": name,
-                        "q_rad": q.tolist(),
-                        "q_cmd_rad": q_t.tolist(),
-                    }
-                    if cams is not None:
-                        a["wrist"] = f"wrist_t{ti}_{name}.png"
-                        cv2.imwrite(str(out / a["wrist"]), cams.grab("wrist"))
-                    arrivals.append(a)
+                    status = go(q_t, approach_vel, tol=0.02, guard=True)
+                    if status != "ok":
+                        msg = "CONTACT on approach" if status == "contact" else "not reached"
+                        typer.echo(f"target {ti} {name}: {msg}; backing out")
+                        arrivals.append(
+                            {
+                                "target": ti,
+                                "corner_id": t["corner_id"],
+                                "approach": name,
+                                "stage": "approach",
+                                "contact": status == "contact",
+                            }
+                        )
+                        go(pre, approach_vel)
+                        continue
+                    glide = GlideTo(q_t, max_vel=approach_vel, hz=50.0)
+                    arrivals.append(hold_and_shoot(glide, ti, name, "raw", q_t))
+                    if trim and not arrivals[-1]["contact"]:
+                        arrivals.append(hold_and_shoot(SettleTrim(q_t), ti, name, "trimmed", q_t))
                     go(pre, approach_vel)  # back out the way it came
                 go(safe, max_vel)
                 typer.echo(f"target {ti + 1}/{len(p['targets'])} done")

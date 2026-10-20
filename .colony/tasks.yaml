@@ -55,7 +55,7 @@ tasks:
     owner: you
     status: todo
     updated: 2026-10-20
-    detail: "Fold the arm, `uv run tip-accuracy run --backend real --live` (~4 min). Planned + rehearsed in sim; 20 mm hover."
+    detail: "Run 1 (20 mm hover) touched the board: servos stop 6-10 mm short (sag + deadband), fingertip ~6 mm longer than modelled. Rerun at 40 mm with contact guard + settle trim: `uv run tip-accuracy run --backend real --live` (~15 min)."
 
   # ---- twin + modelling
   - id: actuator-backlash

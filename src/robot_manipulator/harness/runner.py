@@ -73,7 +73,9 @@ def _attempt(
             obs = backend.read()
             obs["t"] = clock.now()
             obs["goal"] = goal
-            ctx = RunContext(goal=goal, step=k, elapsed=clock.now() - t0, t=clock.now())
+            ctx = RunContext(
+                goal=goal, step=k, elapsed=clock.now() - t0, t=clock.now(), q_cmd=q_prev.copy()
+            )
             verdict, reason = _check(skill.end_conditions, obs, ctx)
             if verdict is not None:
                 return verdict, reason, n
