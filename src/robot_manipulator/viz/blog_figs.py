@@ -241,12 +241,66 @@ def fig_hunting(plt) -> Path | None:
     return _save(fig, "05_calm_vs_hunting")
 
 
+# ---------------------------------------------------------------- 6. settle trim at the fingertip
+def fig_trim(plt) -> Path | None:
+    """Fingertip error per arrival, before and after the settle trim (latest tip-accuracy run)."""
+    reports = sorted((REPO / "runs" / "accuracy").glob("*_real/report.json"))
+    reports = [r for r in reports if "trimmed" in json.loads(r.read_text()).get("stages", {})]
+    if not reports:
+        return None
+    rep = json.loads(reports[-1].read_text())
+    hover = json.loads((reports[-1].parent / "session.json").read_text()).get("hover_m", 0.04)
+    rows: dict[tuple, dict] = {}
+    for a in rep["arrivals"]:
+        if "err_board_m" in a:
+            rows.setdefault((a["target"], a["approach"]), {})[a["stage"]] = np.array(
+                a["err_board_m"]
+            )
+    pairs = [(k, v) for k, v in sorted(rows.items()) if {"raw", "trimmed"} <= set(v)]
+    if not pairs:
+        return None
+    fig, axes = plt.subplots(1, 2, figsize=(8.4, 0.32 * len(pairs) + 1.4), sharey=True)
+    labels = [f"T{t + 1} {ap.replace('from_', 'from ')}" for (t, ap), _ in pairs]
+    y = np.arange(len(pairs))
+    for ax, (title, f) in zip(
+        axes,
+        (
+            ("in-plane error (mm)", lambda e: 1000 * np.linalg.norm(e[:2])),
+            ("height error (mm, planned 0)", lambda e: 1000 * (e[2] - hover)),
+        ),
+    ):
+        raw = np.array([f(v["raw"]) for _, v in pairs])
+        trm = np.array([f(v["trimmed"]) for _, v in pairs])
+        ax.hlines(y, raw, trm, color=GRID, linewidth=3, zorder=1)
+        ax.scatter(raw, y, s=40, color=SERIES[1], zorder=2, label="as the servos stop")
+        ax.scatter(trm, y, s=40, color=SERIES[0], zorder=3, label="after settle trim")
+        ax.axvline(0, color=INK2, linewidth=0.8)
+        ax.set_title(title, fontsize=10)
+    axes[0].set_yticks(y, labels)
+    axes[0].invert_yaxis()
+    axes[0].legend(loc="lower right", fontsize=8)
+    med_raw = np.median([1000 * np.linalg.norm(v["raw"][:2]) for _, v in pairs])
+    med_trm = np.median([1000 * np.linalg.norm(v["trimmed"][:2]) for _, v in pairs])
+    fig.suptitle(
+        f"Software integral action at the fingertip: median in-plane error {med_raw:.1f} → "
+        f"{med_trm:.1f} mm",
+        x=0.01,
+        ha="left",
+        fontsize=11,
+        fontweight="bold",
+        color=INK,
+        y=1.02,
+    )
+    return _save(fig, "06_settle_trim")
+
+
 FIGS = {
     "torque": fig_torque_budget,
     "sag": fig_sag,
     "stop": fig_stop_error,
     "step": fig_step,
     "hunting": fig_hunting,
+    "trim": fig_trim,
 }
 
 

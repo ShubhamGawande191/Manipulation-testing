@@ -53,6 +53,7 @@ ROLL = np.radians(-80.0)
 BOARD_SLAB_M = 0.02  # collision box under the board surface
 BOARD_MARGIN_M = 0.02  # beyond the printed corners (the plate is larger)
 N_TARGETS = 6
+MIN_SEEN = 10  # board corners the wrist camera must see at a target
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
@@ -130,6 +131,12 @@ def plan_targets(R_rb, t_rb, n: int = N_TARGETS) -> dict:
     chk = Checker(R_rb, t_rb, outer)
     up = _board_up(R_rb)
 
+    from robot_manipulator.calib.wristcal import WristRig, visible_corners
+
+    rig = WristRig()
+    mount_cfg = yaml.safe_load((EXTRINSICS_DIR / "wrist_mount.yaml").read_text())
+    mount = (np.array(mount_cfg["R"]), np.array(mount_cfg["t_m"]))
+
     def solve(p, seed=None):
         for pitch in PITCHES_DEG:
             q = ik.solve(p, np.radians(pitch), ROLL, seed=seed, margin=0.05)
@@ -138,11 +145,16 @@ def plan_targets(R_rb, t_rb, n: int = N_TARGETS) -> dict:
         return None, None
 
     targets = []
-    for idx in pick_corners(inner, 3 * n):  # more candidates than needed: some won't plan
+    for idx in pick_corners(inner, len(inner)):  # spread first; some won't plan or won't be seen
         corner = R_rb @ inner[idx] + t_rb
         tip = corner + HOVER_M * up
         q, pitch = solve(tip)
         if q is None:
+            continue
+        # the wrist camera must see enough of the board to measure (run 2: far-edge targets
+        # showed 0-3 corners); predicted with the calibrated mount and intrinsics
+        seen = visible_corners(rig, q, R_rb, t_rb, inner, mount)
+        if seen < MIN_SEEN:
             continue
         radial = tip[:2] - ik.g.pan_xy
         radial = np.r_[radial / np.linalg.norm(radial), 0.0]
@@ -168,6 +180,7 @@ def plan_targets(R_rb, t_rb, n: int = N_TARGETS) -> dict:
                 "corner_robot": corner.tolist(),
                 "tip_target": tip.tolist(),
                 "pitch_deg": pitch,
+                "predicted_corners_seen": int(seen),
                 "q": q.tolist(),
                 "safe": safe.tolist(),
                 "approaches": {k: v.tolist() for k, v in approaches.items()},
@@ -340,7 +353,7 @@ def run(
     live: bool = typer.Option(False, "--live/--dry-run"),
     max_vel: float = typer.Option(0.5, help="rad/s cap for transfers"),
     approach_vel: float = typer.Option(0.25, help="rad/s cap for the final approach"),
-    hold_s: float = typer.Option(0.6),
+    hold_s: float = typer.Option(1.0, help="hold before each photo (also the trim time)"),
     trim: bool = typer.Option(True, help="settle trim after arrival (photos before and after)"),
     plan_path: Path = typer.Option(OUT_DIR / "plan.json"),
     port: str = typer.Option("/dev/so101_follower"),
@@ -404,7 +417,10 @@ def run(
         return "ok" if res.status == "success" or err < 0.1 else "missed"
 
     def hold_and_shoot(policy, ti: int, name: str, stage: str, q_t) -> dict:
-        sk = Skill(f"acc_{stage}", policy, [ContactGuard(), TimeLimit(hold_s)], hz=50.0)
+        # no following-error guard here: the trim moves the command away from a joint that
+        # friction holds, which is exactly what that guard reads as contact (run 2: 6 false
+        # trips, trims aborted). The trim is bounded (+-4 deg) instead.
+        sk = Skill(f"acc_{stage}", policy, [TimeLimit(hold_s)], hz=50.0)
         res = run_skill(sk, be, safety(approach_vel), goal={}, clock=clock)
         q = np.mean([np.asarray(be.read()["q"]) for _ in range(5)], axis=0)
         a = {

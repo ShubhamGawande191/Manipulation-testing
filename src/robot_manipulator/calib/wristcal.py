@@ -156,10 +156,11 @@ def board_points(board) -> tuple[np.ndarray, np.ndarray]:
     return board_outer_corners(board), np.asarray(board.getChessboardCorners(), dtype=float)
 
 
-def visible_corners(rig: WristRig, q, R_rb, t_rb, inner) -> int:
+def visible_corners(rig: WristRig, q, R_rb, t_rb, inner, mount=None) -> int:
     """Inner board corners the wrist camera would see at ``q``: in front, inside the image with a
-    margin, and not behind the closed fingers (bottom-centre of the wrist image)."""
-    R_rc, p_rc = rig.camera(q)
+    margin, and not behind the closed fingers (bottom-centre of the wrist image). ``mount``: the
+    calibrated camera mount (R, t), else the model's."""
+    R_rc, p_rc = rig.camera(q, mount)
     uv, z = project(rig.K0, R_rc, p_rc, inner @ R_rb.T + t_rb)
     ok = (z > 0.05) & (uv[:, 0] > MIN_PX) & (uv[:, 0] < IMG_W - MIN_PX) & (uv[:, 1] > MIN_PX)
     ok &= uv[:, 1] < IMG_H - MIN_PX
