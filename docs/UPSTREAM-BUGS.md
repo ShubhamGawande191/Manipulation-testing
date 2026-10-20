@@ -55,6 +55,13 @@ the follower joints at the closed pose (`integrations/curobo/bench_curobo.py`).
 **Draft issue title:** "RobotBuilder: CUDA device assert when mimic joints follow a leader joint
 whose link has no geometry (joint_names / joint-limit length mismatch)"
 
+**Related upstream (checked 2026-10-20):** open #706 ("cspace lists hand joints that are pruned
+from the kinematic tree") is the same family, a joint list vs a pruned tree, and #678 added a
+validator that now reports *cspace-named* pruned joints clearly. Ours is the case that validator
+misses: a pruned mimic *leader* whose limits go missing. Reference both, and propose extending the
+#678 validation (names vs limits) in the same place. Use the repo's bug template (prerequisites,
+repro on latest main, version + SHA).
+
 ## 2. mjcf-urdf-simple-converter: unlimited hinges get limits `[0, 0]`
 
 **Repro** (0.7.3 and main): any MJCF hinge without `range`/`limited` (MuJoCo reports
@@ -81,6 +88,9 @@ upper limits").
 for the PincOpen linkage, else ±π).
 
 **Draft issue title:** "Unlimited hinge joints are exported as revolute with limits [0, 0]"
+
+**Upstream:** the repo has no issues (open or closed) as of 2026-10-20; 0.7.3 already fixed the
+earlier CLI and output-directory problems.
 
 ## 3–4. cuRobo, fixed on main
 

@@ -18,9 +18,18 @@ def test_new_view_gate():
     assert is_new_view(prev, pts * 1.5)  # much bigger on screen
 
 
+OLD_BOARD = """squares_x: 5
+squares_y: 7
+dictionary: DICT_7X7_50
+square_length_m: 0.040
+marker_length_m: 0.020
+"""  # the board in calibration_images/ (the current config describes the 2026-10-20 reprint)
+
+
 @pytest.mark.skipif(len(OLD) < 10, reason="needs the archived calibration_images/")
-def test_calibrates_archived_board_images_to_sane_intrinsics():
-    board, _ = make_board()
+def test_calibrates_archived_board_images_to_sane_intrinsics(tmp_path):
+    (tmp_path / "board.yaml").write_text(OLD_BOARD)
+    board, _ = make_board(tmp_path / "board.yaml")
     views = [cv2.imread(f, cv2.IMREAD_GRAYSCALE) for f in OLD]
     res = calibrate(board, views, (640, 480))
     K = np.array(res["camera_matrix"])

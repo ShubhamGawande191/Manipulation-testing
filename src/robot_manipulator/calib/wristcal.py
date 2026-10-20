@@ -284,6 +284,32 @@ def board_guess(session: Path) -> tuple[np.ndarray, np.ndarray]:
     return planar_board_pose(corners, xy, TABLE_Z + 0.001)
 
 
+def board_from_camera(cam_name: str = "workspace") -> tuple[np.ndarray, np.ndarray]:
+    """Board pose in the robot frame from the calibrated overhead camera: PnP of the board in the
+    camera, chained with ``config/extrinsics/<cam>.yaml``. Good to a few mm, enough to plan."""
+    import cv2
+
+    from robot_manipulator.calib.extrinsics import EXTRINSICS_DIR, INTRINSICS_DIR, _grab
+
+    intr = yaml.safe_load((INTRINSICS_DIR / f"{cam_name}.yaml").read_text())
+    ext = yaml.safe_load((EXTRINSICS_DIR / f"{cam_name}.yaml").read_text())
+    K, dist = np.array(intr["camera_matrix"]), np.array(intr["dist_coeffs"])
+    board, _ = make_board()
+    cc, ci = None, None
+    for _ in range(10):
+        cc, ci = detect(board, cv2.cvtColor(_grab(cam_name), cv2.COLOR_BGR2GRAY), min_corners=6)
+        if cc is not None:
+            break
+    if cc is None:
+        raise RuntimeError(f"{cam_name} camera does not see the board (fold the arm away?)")
+    P, uv = board.matchImagePoints(cc, ci)
+    ok, rvec, tvec = cv2.solvePnP(P, uv, K, dist)
+    R_cb, _ = cv2.Rodrigues(rvec)
+    x, y_up = np.array(ext["xyaxes"][:3]), np.array(ext["xyaxes"][3:])
+    R_rc = np.c_[x, -y_up, np.cross(x, -y_up)]  # OpenCV camera axes in the robot frame
+    return R_rc @ R_cb, R_rc @ tvec.ravel() + np.array(ext["pos"])
+
+
 # ---------------------------------------------------------------- solving
 def solve(
     rig: WristRig,
@@ -378,10 +404,19 @@ def plan(
     n: int = typer.Option(24, help="number of viewpoints"),
     seed: int = 0,
     board_from: Path | None = typer.Option(None, help="touch session json (default: latest)"),
+    from_camera: bool = typer.Option(
+        False,
+        "--board-from-camera",
+        help="locate the board with the calibrated overhead camera instead of touches",
+    ),
 ) -> None:
     """Pick viewpoints in the twin and save them to runs/wristcal/plan.json."""
-    session = board_from or _latest_touch_session()
-    R_rb, t_rb = board_guess(session)
+    if from_camera:
+        session = "workspace camera"
+        R_rb, t_rb = board_from_camera()
+    else:
+        session = board_from or _latest_touch_session()
+        R_rb, t_rb = board_guess(session)
     t0 = time.monotonic()
     poses = plan_views(R_rb, t_rb, n=n, seed=seed)
     OUT_DIR.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,10 @@
-# The printed ChArUco board (identified 2026-10-17 from calibration_images/: 5x7 squares,
-# DICT_7X7_50, marker ids 0-16). Square/marker sizes only matter for extrinsics (metric scale),
-# not for lens intrinsics. square_length_m measured 2026-10-18: 40 mm black square.
+# ChArUco board on a flat plate, reprinted 2026-10-20 (the old 7X7 paper board was wavy).
+# Printed at ~95 % of nominal: squares measured 33.2 mm (nominal 35.0), the 50 mm reference bar
+# 47.9 mm. The 0.9 % difference between the two axes is within the reading error of one square;
+# TODO: measure the full grid in both directions to settle the scale (and any anisotropy).
+# Marker side: ~0.65 x square from the image (TODO: measure one marker's outer black edge).
 squares_x: 5
 squares_y: 7
-dictionary: DICT_7X7_50
-square_length_m: 0.040
-marker_length_m: 0.020
+dictionary: DICT_4X4_50
+square_length_m: 0.0332
+marker_length_m: 0.0216
