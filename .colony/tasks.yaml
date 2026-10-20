@@ -134,6 +134,24 @@ tasks:
     owner: agent
     status: todo
     updated: 2026-10-20
+  - id: blog-so101-servo
+    title: Blog - From servo to policy on the SO-101 (draft + reproducible figures)
+    owner: agent
+    status: doing
+    detail: docs/blog/so101-servo-to-policy/; `uv run blog-figs`. Next figures - closed-loop twin table, accuracy raw vs trimmed, gain sweep.
+    link: docs/blog/so101-servo-to-policy/README.md
+    updated: 2026-10-20
+  - id: weigh-links
+    title: Weigh the SO-101 links and the PincOpen gripper + camera (for the blog and the twin)
+    owner: you
+    status: todo
+    detail: Kitchen scale; the model's numbers are estimates (gripper + camera 212 g).
+    updated: 2026-10-20
+  - id: servo-teardown-photo
+    title: Photo or teardown of a spare STS3215 (gear train, encoder, board) for the blog
+    owner: you
+    status: todo
+    updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions
     owner: you
