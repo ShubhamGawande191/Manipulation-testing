@@ -254,3 +254,25 @@ def test_commands_are_clipped_to_the_calibrated_travel():
     assert out["elbow_flex.pos"] == pytest.approx(97.5 - TRAVEL_MARGIN_DEG, abs=0.1)
     assert out["gripper.pos"] == 50.0
     assert clip_to_travel({"elbow_flex.pos": 10.0}, travel)["elbow_flex.pos"] == 10.0
+
+
+def test_sim_play_operator_trails_command_and_quantizes():
+    pytest.importorskip("mujoco")
+    from robot_manipulator.harness.backend import SimBackend
+
+    q0 = np.array([0.0, -0.5, 0.8, 0.3, 0.0, 0.5])
+    be = SimBackend(play_deg=1.0, quant_deg=0.088)
+    be.reset(q0)
+    target = q0.copy()
+    target[1] += np.radians(5)  # move lift up 5 deg ...
+    for _ in range(150):
+        be.command(target)
+    up = be.read()["q_true"][1]
+    for _ in range(150):
+        be.command(q0)  # ... and back down to where it started
+    down = be.read()["q_true"][1]
+    # trails by ~b on each side of the move: ends ~1 deg short of q0 after coming down
+    assert np.degrees(target[1] - up) == pytest.approx(1.0, abs=0.35)
+    assert np.degrees(down - q0[1]) == pytest.approx(1.0, abs=0.35)
+    q = be.read()["q"]
+    assert np.allclose(q / np.radians(0.088), np.round(q / np.radians(0.088)))

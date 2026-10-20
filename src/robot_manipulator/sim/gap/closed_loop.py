@@ -59,6 +59,8 @@ def score_run(run_dir: Path) -> dict:
         "backend": summary.get("backend"),
         "policy": Path(summary.get("policy", "")).parent.name,
         "actuator_fit": summary.get("actuator_fit"),
+        "play_deg": summary.get("play_deg") or [0.0],
+        "quant_deg": summary.get("quant_deg") or 0.0,
         "n": len(eps),
         "success_rate": summary.get("success_rate"),
         "median_cm": 100 * summary["median_final_dist_m"],

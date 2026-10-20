@@ -50,6 +50,8 @@ def run_reach(
     settle: bool = False,
     oscillation_guard: bool | None = None,
     actuator_fit: Path | None = None,
+    play_deg: tuple[float, ...] = (0.0,),
+    quant_deg: float = 0.0,
 ) -> dict[str, Any]:
     """Run `n_episodes` home+reach episodes and write episodes.parquet, summary.json and traj/."""
     from robot_manipulator.core.episode_log import EpisodeRecord, write_records
@@ -115,7 +117,13 @@ def run_reach(
     real_be = None
     if backend == "sim":
         sim_be = SimBackend(
-            hz=HZ, viewer=viewer, dr=DRConfig(enabled=dr), seed=seed, actuator_fit=actuator_fit
+            hz=HZ,
+            viewer=viewer,
+            dr=DRConfig(enabled=dr),
+            seed=seed,
+            actuator_fit=actuator_fit,
+            play_deg=play_deg if len(play_deg) > 1 else play_deg[0],
+            quant_deg=quant_deg,
         )
     elif backend == "real":
         joint_map = JointMap.from_yaml(joint_map_path)
@@ -264,6 +272,8 @@ def run_reach(
         "settle": bool(settle),
         "oscillation_guard": bool(use_guard),
         "actuator_fit": str(actuator_fit) if actuator_fit else None,
+        "play_deg": list(play_deg),
+        "quant_deg": quant_deg,
         "out": str(run_dir),
         "episodes": episodes,
     }
@@ -315,6 +325,10 @@ def reach_cmd(
     actuator_fit: Path | None = typer.Option(
         None, exists=True, help="sim: twin with this actuator fit (e.g. config/actuator_fit.yaml)"
     ),
+    play_deg: str = typer.Option(
+        "0", help="sim: servo play half-width, deg (one value or 5 comma-separated, CMD order)"
+    ),
+    quant_deg: float = typer.Option(0.0, help="sim: encoder step, deg (STS3215: 0.088)"),
 ) -> None:
     targets = None
     n_episodes = 1
@@ -342,6 +356,8 @@ def reach_cmd(
             settle,
             oscillation_guard,
             actuator_fit,
+            tuple(float(x) for x in play_deg.split(",")),
+            quant_deg,
         )
     brief = {k: v for k, v in summary.items() if k != "episodes"}
     typer.echo(json.dumps(brief, indent=2))
@@ -363,6 +379,8 @@ def _run_reach_cmd(
     settle=False,
     oscillation_guard=None,
     actuator_fit=None,
+    play_deg=(0.0,),
+    quant_deg=0.0,
 ):
     return run_reach(
         backend=backend,
@@ -380,6 +398,8 @@ def _run_reach_cmd(
         settle=settle,
         oscillation_guard=oscillation_guard,
         actuator_fit=actuator_fit,
+        play_deg=play_deg,
+        quant_deg=quant_deg,
     )
 
 

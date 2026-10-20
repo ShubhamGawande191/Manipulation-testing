@@ -256,13 +256,17 @@ def closed_loop(runs: list[Path]) -> None:
     from robot_manipulator.sim.gap.closed_loop import score_run
 
     typer.echo(
-        f"{'run':18} {'backend':7} {'policy':12} {'fit':22} {'n':>3} {'succ':>5} {'med cm':>7} "
+        f"{'run':18} {'backend':7} {'policy':12} {'twin':34} {'n':>3} {'succ':>5} {'med cm':>7} "
         f"{'p90 cm':>7} {'trips':>6} {'flips/s':>8}"
     )
     for r in map(score_run, runs):
         fit = Path(r["actuator_fit"]).name if r["actuator_fit"] else "-"
+        if any(r["play_deg"]):
+            fit = f"{fit} play {'/'.join(f'{v:g}' for v in r['play_deg'])}"
+        if r["quant_deg"]:
+            fit += f" q{r['quant_deg']:g}"
         typer.echo(
-            f"{r['run']:18} {r['backend'] or '?':7} {r['policy'][:12]:12} {fit[:22]:22} "
+            f"{r['run']:18} {r['backend'] or '?':7} {r['policy'][:12]:12} {fit[:34]:34} "
             f"{r['n']:3d} {r['success_rate']:5.2f} {r['median_cm']:7.2f} {r['p90_cm']:7.2f} "
             f"{r['guard_trip_rate']:6.2f} {r['cmd_flips_per_s']:8.1f}"
         )

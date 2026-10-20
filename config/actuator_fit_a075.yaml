@@ -1,0 +1,37 @@
+# Closed-loop candidate twin (2026-10-20): the open-loop fit (config/actuator_fit.yaml) pulled
+# 25 % back towards the nominal model in log space (scales ** 0.75, delays * 0.75), used WITH a
+# play operator 0.3/1/1/0.7/0 deg and 0.088 deg encoder quantisation (harness --play-deg/--quant-deg).
+# First twin to reproduce 'box policy calm, fit policy hunts' (gap closed-loop; LAB-NOTEBOOK).
+hz: 50.0
+joints:
+  elbow_flex:
+    armature_scale: 2.478628660279185
+    damping_scale: 1.7321510477534283
+    delay_steps: 0
+    frictionloss_scale: 8.853250717104682
+    kp_scale: 0.14030476161766128
+  shoulder_lift:
+    armature_scale: 2.8459851233614684
+    damping_scale: 1.4599184061002133
+    delay_steps: 0
+    frictionloss_scale: 7.640484273632095
+    kp_scale: 0.12749226851033235
+  shoulder_pan:
+    armature_scale: 3.0949431871317836
+    damping_scale: 2.011974277537094
+    delay_steps: 1
+    frictionloss_scale: 4.7868922015929405
+    kp_scale: 0.11992446077622645
+  wrist_flex:
+    armature_scale: 3.1958182764078087
+    damping_scale: 2.715620215561152
+    delay_steps: 0
+    frictionloss_scale: 5.9817944545014115
+    kp_scale: 0.12518048332579737
+  wrist_roll:
+    armature_scale: 0.3277950002307946
+    damping_scale: 2.827194487348525
+    delay_steps: 1
+    frictionloss_scale: 5.324646924334739
+    kp_scale: 0.13986519529007774
+source: geometric interpolation alpha=0.75 between nominal and config/actuator_fit.yaml

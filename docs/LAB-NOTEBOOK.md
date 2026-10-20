@@ -104,6 +104,30 @@ encoders (FK) in the final hold:
 - Encoders only: link flex and the tool model are extra (tip-accuracy found a further 2-7 mm bias in
   the same -x direction), so the world-frame error of open-loop sim commands is larger still.
 
+**Closed-loop twin: first one that reproduces "box calm, fit hunts"** (`gap closed-loop`; same 20 targets,
+`--settle --max-vel 1.0`; runs/harness/twinplay/). Real arm: box policy 0/20 oscillation-guard trips, 24
+command reversals/s; fit policy 20/20 trips, 51/s.
+
+| twin | box: trips, reversals/s | fit: trips, reversals/s |
+|---|---|---|
+| nominal | 20/20, 217 | 20/20, 217 |
+| nominal + play (0.3/1/1/0.7/0 deg) +- 0.088 deg quantisation | 20/20, ~174 | 19-20/20, ~165 |
+| open-loop fit + play | 0/20, 23 | 0/20, 20 |
+| fit^0.25 + play | 3/20, 135 | 20/20, 132 |
+| fit^0.5 + play | 1/20, 42 | 7/20, 88 |
+| **fit^0.75 + play + quant, 3 seeds** | **0/60, 18-38** | **24/60, 47-55** |
+| fit^0.75 without play | 2/20, 1.8 | 11/20, 38 |
+
+- The open-loop fit is over-damped closed-loop (both policies calm); nominal is under-damped (both hunt).
+  Pulling the fit 25 % back toward nominal in log space, with the measured play, is the first twin where
+  the ranking matches the arm: box calm (0/60) and fit hunting (24/60).
+- The play operator is what gives the calm policy its real reversal rate (1.8/s without, 18-38/s with,
+  real 24/s).
+- Still short: the twin trips on 40 % of fit episodes vs 100 % real, and doesn't reproduce the fit
+  policy's real misses (100 % vs 85 % success). Saved as `config/actuator_fit_a075.yaml` (candidate).
+- Consistent with Tune to Learn: the policy trained on the over-damped fit overshoots on a livelier
+  plant; the twin that reproduces it is livelier than the open-loop fit.
+
 **Intrinsic insertion challenge + `intrinsic-core` agent skills (read 2026-10-20).** What the winning
 teams did matches what the insertion study says:
 - Perception and action split: a CAD-based foundation pose model for sub-mm part poses (the open repo wires

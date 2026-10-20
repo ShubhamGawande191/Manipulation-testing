@@ -95,9 +95,9 @@ tasks:
   - id: actuator-backlash
     title: Model gear backlash/deadband + encoder quantization; re-run the closed-loop table
     owner: agent
-    status: todo
-    detail: No twin reproduces 'box calm, fit hunts' yet (gap closed-loop). Static sag is not the P loop.
-    updated: 2026-10-18
+    status: done
+    detail: Play operator + encoder quantisation in SimBackend (--play-deg/--quant-deg). fit^0.75 + play reproduces box calm / fit hunts (0/60 vs 24/60 trips); trip rate still under-predicted.
+    updated: 2026-10-20
   - id: reset-cup-scene
     title: Add the auto-reset cup (assets/cup.stl) to the bench scene
     owner: agent
@@ -204,8 +204,8 @@ tasks:
   - id: twin-closed-loop-fix
     title: Why the better-fitting twin trains a worse policy - play-operator model, fit on closed-loop logs, DR spanning nominal..fit
     owner: agent
-    status: todo
-    detail: Accept a twin only if `gap closed-loop` reproduces both real behaviours (box calm, fit hunts). Optional - actuator net (GapONet / ANYmal-style) as a third candidate.
+    status: doing
+    detail: Candidate config/actuator_fit_a075.yaml + play. Next - play in the training env + DR, retrain, real A/B with the operator.
     updated: 2026-10-20
   - id: agent-skills-mcp
     title: ASPIRE-style agent interface - harness skills as MCP tools + AGENTS.md rules (sim only first)

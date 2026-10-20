@@ -345,6 +345,9 @@ uv run gap closed-loop runs/harness/<real_run> runs/harness/<sim_run> ...
     40–100 mrad, because a spring that soft can't follow the chirps as fast as the arm does. The
     sag is most likely gear backlash, compliance or a deadband rather than the servo's P loop. It
     belongs in the twin as a separate element (e.g. a gravity-dependent offset), not in kp.
+- **Play + quantisation in the twin:** `harness reach --backend sim --play-deg 0.3,1,1,0.7,0 --quant-deg 0.088
+  --actuator-fit config/actuator_fit_a075.yaml`. The open-loop fit pulled 25 % back toward nominal (in log
+  space) plus the measured play is the first twin where box stays calm and fit hunts (see the notebook).
 - **Closed-loop check** (`gap closed-loop`): a twin is good when a *fixed* policy behaves on it as
   it does on the arm. That covers final accuracy and hunting, measured as the Oscillation guard
   trip rate (replayed offline) and command reversals per second after 2 s.
@@ -571,6 +574,6 @@ arms:
 | 7 Extrinsics | ✅ overhead camera (run 2, PnP 0.18 px) + **encoder offsets applied** (two wrist-camera runs agree; lift +4.6, elbow −4.75, wflex −4.58°) | `config/extrinsics/workspace.yaml`; `config/sim2real.yaml`; `runs/wristcal/joint_*.json` |
 | 7b Fingertip accuracy | 🟡 run 3: raw 10.5 mm → trimmed **4.9 mm** median, play 1.3 mm; −x bias left (tool model / board) | `runs/accuracy/20261020-170433_real/report.json` |
 | 8 Scene / reset cup | 🟡 bench scene generated (table, column, leader); camera pose placeholder until §7; cup not added | `config/scene_bench.yaml` |
-| 9 Actuator fit | 🟡 open-loop OK, **closed-loop not yet**: no twin (nominal / v2 / sag-pinned v3) reproduces 'box calm, fit hunts' (`gap closed-loop`). First fit: chirp RMSE 68–78 → 8–21 mrad, lag 80–100 → 0 ms; held-out steps 18.7 → 9.8 mrad | `config/actuator_fit.yaml`; `runs/gap/20261018-125035_real` | |
+| 9 Actuator fit | 🟡 open-loop OK; **closed-loop: first match** - fit^0.75 + play 0.3/1/1/0.7/0 deg + 0.088 deg quantisation: box 0/60 trips, fit 24/60 (real 0/20, 20/20); trip rate still under-predicted | `config/actuator_fit.yaml`, `config/actuator_fit_a075.yaml`; `runs/harness/twinplay/`; LAB-NOTEBOOK 2026-10-20 |
 | 10 Policy | 🟡 sim 95 % / harness 99 %; **real zero-shot 20/20 at 0.5 rad/s** (4/5 before the cap fix) | `runs/harness/20261018-123358`; telemetry `runs/telemetry/20261018-120145_harness_live.*`; cap-consistent retrain next |
 | 11 Atlas + telemetry | 🟡 prior built; survey 21/21 poses; 1702 static samples; lift load r=0.78 | `runs/atlas/`; `runs/telemetry/` |

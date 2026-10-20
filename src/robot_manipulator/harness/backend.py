@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -107,9 +107,16 @@ class SimBackend:
         dr: DRConfig | None = None,
         seed: int = 0,
         actuator_fit: str | Path | None = None,
+        play_deg: float | Sequence[float] = 0.0,
+        quant_deg: float = 0.0,
     ) -> None:
         """``actuator_fit``: a `sim.gap.fit` yaml applied to the model (DR then centres on it).
-        Its per-joint command delays add to the DR action delay."""
+        Its per-joint command delays add to the DR action delay.
+
+        ``play_deg``: half-width of a play operator per arm joint (CMD order, or one value for all):
+        the servo output follows the command only once it is more than b away, then trails it by b
+        - the STS3215's approach-dependent stop (I = 0 + friction), ~1 deg on lift/elbow here.
+        ``quant_deg``: measured joints rounded to this step (STS3215 encoder: 0.088 deg)."""
         import mujoco
 
         from robot_manipulator.sim import model as sim_model
@@ -138,6 +145,10 @@ class SimBackend:
         self._delay = 0
         self._bias = np.zeros(N - 1)
         self._pending: deque[np.ndarray] = deque()
+        self._play = np.zeros(N)
+        self._play[: N - 1] = np.radians(np.broadcast_to(np.asarray(play_deg, float), (N - 1,)))
+        self._quant = np.radians(quant_deg)
+        self._engaged = np.zeros(N)
         self._viewer = None
         if viewer:
             import mujoco.viewer
@@ -170,6 +181,7 @@ class SimBackend:
         # the command pipeline starts holding q, like a policy that has not moved yet
         self._delays = self._delay + self._joint_delay
         self._pending = deque(q.copy() for _ in range(self._delays.max() + 1))
+        self._engaged = q.copy()
 
     def read(self) -> Obs:
         """Measured state: with DR on, q has a per-episode bias and noise, and dq has noise.
@@ -180,6 +192,8 @@ class SimBackend:
         q_true = self.data.qpos[self._qpos].copy()
         dq_true = self.data.qvel[self._dof].copy()
         q, dq = q_true.copy(), dq_true.copy()
+        if self._quant > 0:
+            q = np.round(q / self._quant) * self._quant
         if self.dr.enabled:
             q[: N - 1] += self._bias + self.rng.normal(0.0, self.dr.obs_noise_q, N - 1)
             dq[: N - 1] += self.rng.normal(0.0, self.dr.obs_noise_dq, N - 1)
@@ -202,6 +216,9 @@ class SimBackend:
             self._pending.popleft()
             # joint j gets the command sent d_j ticks ago
             q = np.array([self._pending[-1 - d][j] for j, d in enumerate(self._delays)])
+        if self._play.any():  # play operator: output trails the command by up to b per joint
+            self._engaged = np.clip(self._engaged, q - self._play, q + self._play)
+            q = self._engaged.copy()
         self.data.ctrl[self._act] = q
         for _ in range(self.n_substeps):
             self._mj.mj_step(self.model, self.data)
