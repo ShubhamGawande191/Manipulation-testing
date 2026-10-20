@@ -37,8 +37,9 @@ import typer
 import yaml
 
 from robot_manipulator.calib.camera import REPO, detect, make_board
-from robot_manipulator.calib.extrinsics import EXTRINSICS_DIR, INTRINSICS_DIR, TipFK
+from robot_manipulator.calib.extrinsics import INTRINSICS_DIR, TipFK
 from robot_manipulator.calib.wristcal import _Cams, board_from_camera, board_points
+from robot_manipulator.profile import ACTIVE
 from robot_manipulator.sim.model import ASSET_DIR, JOINTS, apply_joint_couplings, joint_qpos_adr
 
 OUT_DIR = REPO / "runs" / "accuracy"
@@ -99,7 +100,7 @@ def _board_up(R_rb: np.ndarray) -> np.ndarray:
 
 def tip_in_camera(fk: TipFK) -> np.ndarray:
     """Fingertip in the wrist camera frame (OpenCV axes): rigid, so any joint vector will do."""
-    mount = yaml.safe_load((EXTRINSICS_DIR / "wrist_mount.yaml").read_text())
+    mount = yaml.safe_load(ACTIVE.wrist_mount.read_text())
     R_m, t_m = np.array(mount["R"]), np.array(mount["t_m"])
     q = np.zeros(6)
     tip_w = fk.tip(q)  # also runs FK for the frames below
@@ -134,7 +135,7 @@ def plan_targets(R_rb, t_rb, n: int = N_TARGETS) -> dict:
     from robot_manipulator.calib.wristcal import WristRig, visible_corners
 
     rig = WristRig()
-    mount_cfg = yaml.safe_load((EXTRINSICS_DIR / "wrist_mount.yaml").read_text())
+    mount_cfg = yaml.safe_load(ACTIVE.wrist_mount.read_text())
     mount = (np.array(mount_cfg["R"]), np.array(mount_cfg["t_m"]))
 
     def solve(p, seed=None):
@@ -356,7 +357,7 @@ def run(
     hold_s: float = typer.Option(1.0, help="hold before each photo (also the trim time)"),
     trim: bool = typer.Option(True, help="settle trim after arrival (photos before and after)"),
     plan_path: Path = typer.Option(OUT_DIR / "plan.json"),
-    port: str = typer.Option("/dev/so101_follower"),
+    port: str = typer.Option(ACTIVE.port),
     stow_leader: bool = typer.Option(True, "--stow-leader/--no-stow-leader"),
 ) -> None:
     """Visit every target from its four approaches; wrist image + joints at each arrival, before
@@ -388,9 +389,7 @@ def run(
         be.reset(home)
         clock: Any = SimClock()
     elif backend == "real":
-        be = LeRobotBackend(
-            port, JointMap.from_yaml(REPO / "config" / "sim2real.yaml"), dry_run=not live
-        )
+        be = LeRobotBackend(port, JointMap.from_yaml(ACTIVE.joint_map), dry_run=not live)
         if be.telemetry is not None:
             be.telemetry.source = "accuracy_live" if live else "accuracy_dry"
         clock = WallClock()

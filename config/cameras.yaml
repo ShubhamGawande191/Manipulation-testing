@@ -2,7 +2,7 @@
 #
 # Both eMeet C950 webcams report the same USB serial (SN0001), so /dev/v4l/by-id cannot tell them
 # apart and /dev/videoN indices shuffle on replug. /dev/v4l/by-path is stable as long as each
-# camera stays in the SAME USB port. If you move a camera, run `uv run cam-setup --list` and
+# camera stays in the SAME USB port. If you move a camera, run `uv run cam-setup --list-paths` and
 # update the path here.
 #
 # Controls are applied in order with v4l2-ctl (auto modes must be switched off before their

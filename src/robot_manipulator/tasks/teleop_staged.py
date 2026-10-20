@@ -48,6 +48,7 @@ from robot_manipulator.hw.follower import connect_follower as _connect_follower
 from robot_manipulator.hw.follower import glide as _glide
 from robot_manipulator.hw.follower import park_and_release as _park_and_release
 from robot_manipulator.hw.follower import send_goal as _send
+from robot_manipulator.profile import ACTIVE
 
 LOAD_EVERY = 5  # read Present_Load every N ticks (bus time)
 # Leader rest pose (deg), read at the start of the 2026-10-17 teleop run with the leader folded.
@@ -162,9 +163,8 @@ def _home_via() -> np.ndarray:
     """HOME in LeRobot units: parking goes through it (see hw.follower.park_and_release)."""
     from robot_manipulator.harness.units import JointMap
     from robot_manipulator.hw.follower import home_lerobot
-    from robot_manipulator.hw.telemetry import REPO as _REPO
 
-    return home_lerobot(JointMap.from_yaml(_REPO / "config" / "sim2real.yaml"))
+    return home_lerobot(JointMap.from_yaml(ACTIVE.joint_map))
 
 
 def _print_summary(summary: dict[str, dict[str, float]]) -> None:
@@ -188,10 +188,10 @@ def _print_summary(summary: dict[str, dict[str, float]]) -> None:
 
 @app.command()
 def main(
-    follower_port: str = typer.Option("/dev/so101_follower"),
-    follower_id: str = typer.Option("my_so101_follower"),
-    leader_port: str = typer.Option("/dev/so101_leader"),
-    leader_id: str = typer.Option("my_so101_leader"),
+    follower_port: str = typer.Option(ACTIVE.port),
+    follower_id: str = typer.Option(ACTIVE.robot_id),
+    leader_port: str = typer.Option(ACTIVE.leader_port),
+    leader_id: str = typer.Option(ACTIVE.leader_id),
     hz: float = typer.Option(50.0, help="mirror loop rate"),
     max_speed: float = typer.Option(180.0, help="per-joint velocity cap while mirroring, deg/s"),
     stage_speed: float = typer.Option(30.0, help="velocity for staging/parking moves, deg/s"),
@@ -247,13 +247,12 @@ def main(
     try:
         robot, start = _connect_follower(follower_port, follower_id, overrides)
         from robot_manipulator.harness.units import JointMap
-        from robot_manipulator.hw.telemetry import REPO as _REPO
         from robot_manipulator.hw.telemetry import TelemetryLogger
 
         telemetry = TelemetryLogger(
             "teleop",
             follower_id,
-            joint_map=JointMap.from_yaml(_REPO / "config" / "sim2real.yaml"),
+            joint_map=JointMap.from_yaml(ACTIVE.joint_map),
             calibration_path=getattr(robot, "calibration_fpath", None),
         )
         goal = _leader_pos(leader)

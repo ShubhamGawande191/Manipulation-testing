@@ -22,6 +22,7 @@ from robot_manipulator.core.policy_iface import Obs
 from robot_manipulator.exec.scheduler import WallClock
 from robot_manipulator.harness.clock import Clock
 from robot_manipulator.harness.units import CMD_JOINTS, JointMap
+from robot_manipulator.profile import ACTIVE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -287,7 +288,7 @@ class LeRobotBackend:
         self,
         port: str,
         joint_map: JointMap,
-        robot_id: str = "my_so101_follower",
+        robot_id: str | None = None,
         dry_run: bool = True,
         robot: Any = None,
     ) -> None:
@@ -300,6 +301,7 @@ class LeRobotBackend:
         self.dry_run = dry_run
         self.last_command: dict[str, float] | None = None
         self._owns_hw = robot is None  # real hardware opened here (vs an injected test double)
+        robot_id = robot_id or ACTIVE.robot_id
         self._robot = robot if robot is not None else _connect(port, robot_id, live=not dry_run)
         self._last_t: float | None = None
         self._last_q: np.ndarray | None = None

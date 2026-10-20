@@ -34,6 +34,7 @@ import yaml
 
 from robot_manipulator.calib.camera import REPO, detect, make_board
 from robot_manipulator.cameras import apply_controls, load_camera_config
+from robot_manipulator.profile import ACTIVE
 
 INTRINSICS_DIR = REPO / "config" / "camera_intrinsics"
 SCENE_CFG = REPO / "config" / "scene_bench.yaml"
@@ -283,7 +284,7 @@ def _touch(port: str, robot_id: str, per_corner: int) -> tuple[np.ndarray, np.nd
     from robot_manipulator.arm import build_follower_config
     from robot_manipulator.harness.units import JointMap
 
-    jm = JointMap.from_yaml(REPO / "config" / "sim2real.yaml")
+    jm = JointMap.from_yaml(ACTIVE.joint_map)
     robot = SOFollower(build_follower_config(port=port, robot_id=robot_id, cameras=False))
     robot.bus.connect()
     qs, ids = [], []
@@ -317,8 +318,8 @@ def _touch(port: str, robot_id: str, per_corner: int) -> tuple[np.ndarray, np.nd
 @app.command()
 def main(
     cam_name: str = typer.Argument("workspace"),
-    port: str = typer.Option("/dev/so101_follower"),
-    robot_id: str = typer.Option("my_so101_follower"),
+    port: str = typer.Option(ACTIVE.port),
+    robot_id: str = typer.Option(ACTIVE.robot_id),
     per_corner: int = typer.Option(4, help="touches per corner, each in a different arm pose"),
     fit: str | None = typer.Option(
         None,

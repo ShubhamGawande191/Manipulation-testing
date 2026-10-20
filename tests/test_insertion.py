@@ -49,3 +49,14 @@ def test_chamfer_captures_an_offset_the_plain_hole_cannot():
     assert not plain["ok"]
     assert chamf["ok"]
     assert chamf["pen_mm"] < ins.MAX_PEN_MM
+
+
+def test_scripted_commands_descend_straight_and_stay_above_table():
+    m = ins.scripted_commands(lift_m=0.03)
+    tips = ins.peg_tips(ins.build(2.0), m)
+    z = tips[:, 2]
+    assert np.all(np.diff(z) <= 1e-6)  # hover, then monotone descent, then hold
+    assert 1000 * (z[0] - z[-1]) == pytest.approx(22.0, abs=0.5)  # 5 mm above top -> 17 mm below
+    lateral = 1000 * np.linalg.norm(tips[:, :2] - ins.HOLE_XY, axis=1)
+    assert lateral.max() < 0.5  # straight down over the hole
+    assert z.min() + ins.PEG_LEN - ins.TABLE_Z > 0.05  # fingertip >= 50 mm above the table

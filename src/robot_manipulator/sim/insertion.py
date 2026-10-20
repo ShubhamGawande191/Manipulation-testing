@@ -77,6 +77,7 @@ def build(
     hole_xy=HOLE_XY,
     yaw_deg: float | None = None,
     friction: float = FRICTION,
+    cameras: dict[str, tuple] | None = None,
 ) -> mujoco.MjModel:
     """Scene with the hole turned to the peg's yaw at the insertion pose (``peg_yaw``): the wrist
     roll and pan turn the square peg ~7 deg off the table axes, which alone needs ~1.4 mm of
@@ -148,6 +149,16 @@ def build(
             r.quat = q.tolist()
             r.contype, r.conaffinity = 0, 2
             r.rgba = [0.4, 0.4, 0.45, 1]
+    for name, (pos, target, fovy) in (cameras or {}).items():  # fixed render cameras
+        pos, target = np.asarray(pos, float), np.asarray(target, float)
+        fwd = (target - pos) / np.linalg.norm(target - pos)
+        x = np.cross(fwd, [0.0, 0.0, 1.0])
+        x = x / np.linalg.norm(x) if np.linalg.norm(x) > 1e-6 else np.array([1.0, 0.0, 0.0])
+        y = np.cross(x, fwd)  # MuJoCo cameras look along -z with +y up
+        R = np.column_stack([x, y, -fwd])
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, R.flatten())
+        spec.worldbody.add_camera(name=name, pos=pos.tolist(), quat=q.tolist(), fovy=float(fovy))
     return spec.compile()
 
 
@@ -459,3 +470,92 @@ def compare(
             f"{cl:4.1f} mm: A {oa.mean():4.0%}  B {ob.mean():4.0%}  "
             f"only A {only_a:3d}  only B {only_b:3d}  p = {mcnemar_p(only_a, only_b):.3f}"
         )
+
+
+# ---------------------------------------------------------------- sim commands on the real arm
+def scripted_commands(lift_m: float = 0.03, hole_xy=HOLE_XY, hold_s: float = 1.0) -> np.ndarray:
+    """The ideal insertion's joint commands (CMD order, rad, 50 Hz): hover, hold, descend at
+    1 cm/s to insertion depth, hold. ``lift_m`` raises everything so the real arm, without a peg
+    or fixture, replays it in free air above the table."""
+    from robot_manipulator.ik.analytic import AnalyticIK
+
+    ik = AnalyticIK()
+    top = TABLE_Z + HOLE_H + lift_m
+
+    def q_at(z):
+        q = ik.solve(np.r_[hole_xy, z + PEG_LEN], np.pi / 2, ROLL)
+        if q is None:
+            raise ValueError(f"IK failed at z = {z:.3f} m")
+        return q
+
+    rows = [q_at(top + 0.005)] * int(hold_s * HZ)
+    z, z_end = top + 0.005, top - DEPTH_M - 0.005
+    while z > z_end:
+        z = max(z - 0.01 / HZ, z_end)
+        rows.append(q_at(z))
+    rows += [rows[-1]] * int(hold_s * HZ)
+    return np.array(rows)
+
+
+def peg_tips(model: mujoco.MjModel, qs: np.ndarray) -> np.ndarray:
+    """Peg-bottom position (world, m) for each joint vector (forward kinematics only)."""
+    d = mujoco.MjData(model)
+    adr = joint_qpos_adr(model, JOINTS)
+    peg = model.geom("peg").id
+    out = []
+    for q in qs:
+        d.qpos[adr] = q
+        mujoco.mj_kinematics(model, d)
+        R = d.geom_xmat[peg].reshape(3, 3)
+        out.append(d.geom_xpos[peg] + R[:, 0] * PEG_LEN / 2)
+    return np.array(out)
+
+
+@app.command("export-motion")
+def export_motion(
+    lift_mm: float = typer.Option(30.0, help="raise the whole motion (free-air replay, no peg)"),
+    name: str = typer.Option("insertion_replay", help="config/gap_motions/<name>.csv"),
+) -> None:
+    """Write the scripted insertion as a gap motion, for `gap run --motion <name>` on the arm."""
+    from robot_manipulator.sim.gap.motions import write_csv
+
+    m = scripted_commands(lift_m=lift_mm / 1000)
+    tips = peg_tips(build(2.0), m)
+    fingertip_above_table = 1000 * (tips[:, 2].min() + PEG_LEN - TABLE_Z)
+    path = write_csv(REPO / "config" / "gap_motions" / f"{name}.csv", m)
+    typer.echo(
+        f"{len(m)} ticks ({len(m) / HZ:.1f} s); lowest fingertip {fingertip_above_table:.0f} mm "
+        f"above the table (no peg) -> {path}"
+    )
+    typer.echo(f"replay: uv run gap run --backend real --live --motion {name} --max-vel 0.5")
+
+
+@app.command("replay-check")
+def replay_check(
+    run_dir: Path = typer.Argument(..., help="runs/gap/<ts>_real with the replayed motion"),
+    name: str = typer.Option("insertion_replay"),
+) -> None:
+    """Where the sim's insertion commands put the peg tip on the real arm (encoder FK) vs where
+    the commands say and where the nominal twin goes. Encoders only: link flex and the tool
+    model are not in this number (tip-accuracy measures those)."""
+    from robot_manipulator.sim.gap.cli import _load, _sim_from_commands
+
+    real = _load(run_dir / f"{name}.npz")
+    sim = _sim_from_commands(real)
+    model = build(2.0)
+    want, got, twin = (peg_tips(model, x) for x in (real.q_cmd, real.q, sim.q))
+    n = min(len(want), len(got), len(twin))
+    want, got, twin = want[:n], got[:n], twin[:n]
+    hold = slice(n - int(0.5 * HZ), n)  # last 0.5 s of the final hold
+    for label, a in (
+        ("real vs command", got - want),
+        ("real vs twin", got - twin),
+        ("twin vs command", twin - want),
+    ):
+        lat = 1000 * np.linalg.norm(a[:, :2], axis=1)
+        z = 1000 * a[:, 2]
+        typer.echo(
+            f"{label:16}: final lateral {np.median(lat[hold]):5.2f} mm, "
+            f"z {np.median(z[hold]):+6.2f} mm | whole motion lateral max {lat.max():5.2f} mm"
+        )
+    typer.echo("clearance needed to insert without search ~ 2 x final lateral (diametral)")

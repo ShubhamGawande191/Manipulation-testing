@@ -23,6 +23,8 @@ from typing import Any
 import numpy as np
 import typer
 
+from robot_manipulator.profile import ACTIVE
+
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 
 HOME_TOL = 0.05  # rad, per joint; measured q carries sensor bias under DR
@@ -42,8 +44,8 @@ def run_reach(
     viewer: bool = False,
     live: bool = False,
     max_vel: float = 1.0,
-    port: str = "/dev/so101_follower",
-    joint_map_path: Path = Path("config/sim2real.yaml"),
+    port: str = ACTIVE.port,
+    joint_map_path: Path = ACTIVE.joint_map,
     out: Path | None = None,
     settle: bool = False,
     oscillation_guard: bool | None = None,
@@ -296,8 +298,8 @@ def reach_cmd(
     viewer: bool = typer.Option(False, help="sim: open the MuJoCo passive viewer"),
     live: bool = typer.Option(False, "--live/--dry-run", help="real: send commands to the arm"),
     max_vel: float = typer.Option(1.0, help="rad/s cap per joint"),
-    port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
-    joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
+    port: str = typer.Option(ACTIVE.port, help="real: serial port"),
+    joint_map: Path = typer.Option(ACTIVE.joint_map, help="real: joint map"),
     out: Path | None = typer.Option(None, help="output dir (default runs/harness/<ts>)"),
     settle: bool = typer.Option(
         False, "--settle", help="run the full episode; success/accuracy from the final pose"
@@ -389,8 +391,8 @@ def survey_cmd(
     max_vel: float = typer.Option(0.5, help="rad/s cap per joint"),
     live: bool = typer.Option(False, "--live/--dry-run", help="real: send commands to the arm"),
     seed: int = typer.Option(0),
-    port: str = typer.Option("/dev/so101_follower", help="real: serial port"),
-    joint_map: Path = typer.Option(Path("config/sim2real.yaml"), help="real: joint map"),
+    port: str = typer.Option(ACTIVE.port, help="real: serial port"),
+    joint_map: Path = typer.Option(ACTIVE.joint_map, help="real: joint map"),
     stow_leader: bool = typer.Option(
         True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
     ),

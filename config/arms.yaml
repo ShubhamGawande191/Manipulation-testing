@@ -1,0 +1,25 @@
+# Arms on this bench. `SO101_ARM=<name>` picks one; real-arm tools take their default port,
+# LeRobot id, joint map, wrist camera and wrist-camera mount from it (CLI flags still win).
+# See src/robot_manipulator/profile.py. Camera names refer to config/cameras.yaml.
+#
+# Bimanual example (one block per arm; give each its own udev symlink, LeRobot id,
+# joint map and wrist camera):
+#   left:
+#     port: /dev/so101_left_follower
+#     robot_id: left_follower
+#     joint_map: config/sim2real_left.yaml
+#     wrist_camera: left_wrist
+#     wrist_mount: config/extrinsics/left_wrist_mount.yaml
+#     leader_port: /dev/so101_left_leader
+#     leader_id: left_leader
+#   right: {...}
+arms:
+  default:
+    port: /dev/so101_follower
+    robot_id: my_so101_follower
+    joint_map: config/sim2real.yaml
+    wrist_camera: wrist
+    workspace_camera: workspace
+    wrist_mount: config/extrinsics/wrist_mount.yaml
+    leader_port: /dev/so101_leader
+    leader_id: my_so101_leader

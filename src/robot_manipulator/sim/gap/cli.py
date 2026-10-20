@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 import typer
 
+from robot_manipulator.profile import ACTIVE
 from robot_manipulator.sim.gap.replay import ReplayTrace, replay
 
 REPO = Path(__file__).resolve().parents[4]
@@ -60,8 +61,8 @@ def run(
     motion: str = typer.Option("all", help="motion name in config/gap_motions, or 'all'"),
     live: bool = typer.Option(False, "--live/--dry-run", help="real: send commands"),
     max_vel: float = typer.Option(1.0, help="rad/s cap per joint (same for sim and real)"),
-    port: str = typer.Option("/dev/so101_follower"),
-    joint_map: Path = typer.Option(Path("config/sim2real.yaml")),
+    port: str = typer.Option(ACTIVE.port),
+    joint_map: Path = typer.Option(ACTIVE.joint_map),
     stow_leader: bool = typer.Option(
         True, "--stow-leader/--no-stow-leader", help="real live: rotate the leader out of the way"
     ),

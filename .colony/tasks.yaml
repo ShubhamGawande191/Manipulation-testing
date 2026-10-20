@@ -226,11 +226,18 @@ tasks:
     detail: Feeds the atlas (push force per location) and the key-press skill. Straight-down presses reach ~10-28 cm in front of the base (ik-bench reach-map).
     updated: 2026-10-18
   - id: bimanual-port
-    title: Port the twin runbook to the bimanual SO-101s at work
+    title: Bring up the bimanual SO-101s at work (per-arm profiles, cameras, wrist-cam calibration, arm-to-arm transform)
     owner: you
     status: todo
     link: docs/DIGITAL-TWIN-RUNBOOK.md
-    updated: 2026-10-18
+    updated: 2026-10-20
+    detail: Tools ready - SO101_ARM=<arm> profiles (config/arms.yaml), `bimanual check|transform`. Runbook "Adapting to another setup" has the order and commands.
+  - id: arm-profiles-bimanual-twin
+    title: Per-arm profiles for every real-arm tool + two-arm MuJoCo twin + arm-to-arm transform
+    owner: agent
+    status: done
+    updated: 2026-10-20
+    detail: profile.py / config/arms.yaml (SO101_ARM), sim/bimanual.py, camcal-wrist solve-joint saves board pose per session; insertion-study export-motion / replay-check for replaying sim commands on the arm.
 
   # ---- recently done
   - id: workspace-intrinsics

@@ -28,6 +28,7 @@ import typer
 from rich.console import Console
 
 from robot_manipulator.calib.check import DEFAULT_STATS, fleet_check, load_stats
+from robot_manipulator.profile import ACTIVE
 
 FULL_TURN = 4096
 MAX_RES = FULL_TURN - 1
@@ -83,10 +84,10 @@ def _to_motor_cal(cal: dict[str, dict[str, int]]):
 
 @app.command()
 def main(
-    follower_port: str = typer.Option("/dev/so101_follower"),
-    follower_id: str = typer.Option("my_so101_follower"),
-    leader_port: str = typer.Option("/dev/so101_leader"),
-    leader_id: str = typer.Option("my_so101_leader"),
+    follower_port: str = typer.Option(ACTIVE.port),
+    follower_id: str = typer.Option(ACTIVE.robot_id),
+    leader_port: str = typer.Option(ACTIVE.leader_port),
+    leader_id: str = typer.Option(ACTIVE.leader_id),
     joints: str = typer.Option(DEFAULT_JOINTS, help="comma-separated range joints to re-record"),
     wrist_roll: bool = typer.Option(True, "--wrist-roll/--no-wrist-roll", help="align to leader"),
 ) -> None:

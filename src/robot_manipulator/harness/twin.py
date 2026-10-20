@@ -20,9 +20,10 @@ import typer
 from rich.console import Console
 
 from robot_manipulator.harness.units import JointMap
+from robot_manipulator.profile import ACTIVE
 
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_MAP = REPO / "config" / "sim2real.yaml"
+DEFAULT_MAP = ACTIVE.joint_map
 LEROBOT_JOINTS = (
     "shoulder_pan",
     "shoulder_lift",
@@ -47,8 +48,8 @@ def flipped(jm: JointMap, joints: list[str]) -> JointMap:
 
 @app.command()
 def main(
-    port: str = typer.Option("/dev/so101_follower"),
-    robot_id: str = typer.Option("my_so101_follower"),
+    port: str = typer.Option(ACTIVE.port),
+    robot_id: str = typer.Option(ACTIVE.robot_id),
     joint_map: Path = typer.Option(DEFAULT_MAP),
     flip: list[str] = typer.Option([], help="negate the sign of this joint (repeatable)"),
     scene: str = typer.Option("scene_pinc.xml", help="MJCF scene in sim/assets/so101"),

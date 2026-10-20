@@ -1,0 +1,13 @@
+# Two-arm twin layout (sim/bimanual.py). World frame = the LEFT arm's base. Replace the right
+# arm's pose with the measured one: `uv run bimanual transform <left_json> <right_json> --write`
+# (camcal-wrist solve-joint outputs of both arms over a shared board pose).
+table_below_base_m: 0.0275
+arms:
+  left:
+    pos: [0.0, 0.0, 0.0]
+    yaw_deg: 0.0
+    gripper: pinc       # pinc | stock
+  right:
+    pos: [0.0, -0.40, 0.0]   # placeholder: 40 cm to the right, same facing
+    yaw_deg: 0.0
+    gripper: pinc

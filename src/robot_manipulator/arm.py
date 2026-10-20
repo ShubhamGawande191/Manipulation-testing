@@ -19,10 +19,12 @@ from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 from lerobot.robots.so_follower.config_so_follower import SOFollowerRobotConfig
 from lerobot.teleoperators.so_leader.config_so_leader import SOLeaderTeleopConfig
 
+from robot_manipulator.profile import ACTIVE
+
 
 def build_follower_config(
     port: str,
-    robot_id: str = "my_so101_follower",
+    robot_id: str | None = None,
     workspace_cam_index: int | str | None = None,
     wrist_cam_index: int | str | None = None,
     fps: int = 5,
@@ -48,9 +50,9 @@ def build_follower_config(
         from robot_manipulator.cameras import camera_path
 
         if workspace_cam_index is None:
-            workspace_cam_index = camera_path("workspace")
+            workspace_cam_index = camera_path(ACTIVE.workspace_camera)
         if wrist_cam_index is None:
-            wrist_cam_index = camera_path("wrist")
+            wrist_cam_index = camera_path(ACTIVE.wrist_camera)
         cam_dict = {
             "workspace": OpenCVCameraConfig(
                 index_or_path=workspace_cam_index,
@@ -66,7 +68,7 @@ def build_follower_config(
             ),
         }
     return SOFollowerRobotConfig(
-        id=robot_id,
+        id=robot_id or ACTIVE.robot_id,
         port=port,
         cameras=cam_dict,
     )

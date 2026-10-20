@@ -169,7 +169,7 @@ gripper: linear map, lerobot_open -> sim_open, lerobot_closed -> sim_closed
 ## 6. Cameras
 
 ```bash
-uv run cam-setup [--snapshot] [--list]      # lock exposure/white balance; list stable paths
+uv run cam-setup [--snapshot] [--list-paths]      # lock exposure/white balance; list stable paths
 uv run camcal capture <name>                 # live preview, auto-saves ~25 diverse board views
 uv run camcal intrinsics <name>              # -> config/camera_intrinsics/<name>.yaml
 ```
@@ -513,26 +513,50 @@ uv run atlas query X Y Z [--down]       # look up a point (base frame, m)
 
 ## Adapting to another setup (e.g. the bimanual SO-101s at work)
 
-1. **Per arm:** a udev symlink per serial board (`/dev/so101_left_follower`, …), its own LeRobot
-   `id`, and its own calibration JSON. Run §1–§3 per arm and pair.
-2. **One MJCF with two arm instances**, each with a `prefix` (names `left_shoulder_pan`, …). Keep
-   one joint map per arm (`config/sim2real_<arm>.yaml`). `uv run twin` needs `--port`, `--robot-id`
-   and `--joint-map` per arm (not implemented yet).
-3. **Arm-to-arm transform:** from §7 with both arms touching the same board pose.
-4. **Inter-arm collision:** the coarse-box caveat in §4 applies doubly. Get accurate collision
-   geometry before trusting a safety filter between arms.
-5. **End-effectors:** follow §4. Weigh them, take photos, and confirm the mount orientation with the
-   operator.
-6. **Cameras:** follow §6, one by-path entry per camera.
-7. **Calibrate with the wrist camera, not touches** (§7): `camcal-wrist` per arm, with the board
-   placed where that arm reaches it comfortably. The same session gives the joint offsets.
-   Both arms seeing the same board pose gives the arm-to-arm transform.
-8. **Reach policy per arm** (§10a): one training run per gripper type is enough when the arms are
+**One arm profile per arm** (`config/arms.yaml`, `src/robot_manipulator/profile.py`). `SO101_ARM=<name>`
+switches every real-arm tool's defaults (follower port, LeRobot id, joint map, wrist camera, wrist-camera
+mount file, paired leader port/id); flags still win. Without the variable the `default` arm is used.
+
+```yaml
+arms:
+  left:  {port: /dev/so101_left_follower,  robot_id: left_follower,  joint_map: config/sim2real_left.yaml,
+          wrist_camera: left_wrist,  wrist_mount: config/extrinsics/left_wrist_mount.yaml,
+          leader_port: /dev/so101_left_leader,  leader_id: left_leader}
+  right: {port: /dev/so101_right_follower, robot_id: right_follower, joint_map: config/sim2real_right.yaml,
+          wrist_camera: right_wrist, wrist_mount: config/extrinsics/right_wrist_mount.yaml,
+          leader_port: /dev/so101_right_leader, leader_id: right_leader}
+```
+
+1. **Per arm, hardware:** a udev symlink per serial board (match on the board's USB serial, as for
+   `/dev/so101_follower`), its own LeRobot `id` and calibration JSON. Then, per arm:
+   ```bash
+   SO101_ARM=left uv run calib-check            # §2, against the fleet
+   SO101_ARM=left uv run teleop --max-speed 90  # §3, leader -> follower, staged torque
+   SO101_ARM=left uv run twin                   # §5, copy config/sim2real.yaml to sim2real_left.yaml first
+   ```
+2. **Cameras:** one `config/cameras.yaml` entry per camera by USB path (`left_wrist`, `right_wrist`,
+   `workspace`), `uv run cam-setup`, intrinsics per camera (`uv run camcal capture|intrinsics <name>`).
+3. **Wrist-camera calibration per arm** (§7): `SO101_ARM=left uv run camcal-wrist plan|run|solve-joint`.
+   It writes that arm's mount file and wrist intrinsics, and the solve-joint json now records the board
+   pose in that arm's base frame per session.
+4. **Arm-to-arm transform:** leave the board in one place, run a wrist-camera session with **each** arm on
+   it, then:
+   ```bash
+   uv run bimanual transform runs/wristcal/joint_<left>.json runs/wristcal/joint_<right>.json --write
+   uv run bimanual check      # 12 actuators, both wrist cameras, contacts + arm-to-arm clearance at HOME
+   ```
+   `transform` warns when the two bases come out tilted (> 2 deg): the sessions did not share the board pose.
+   The two-arm model (`sim/bimanual.py`, world = left base) prefixes every name (`left_shoulder_pan`, ...).
+5. **Inter-arm collision:** the coarse-box caveat in §4 applies doubly. Use `bimanual check` clearance as
+   a first guard; get accurate collision geometry before trusting a safety filter between arms.
+6. **Per-arm accuracy and actuator gap:** `SO101_ARM=left uv run tip-accuracy run --backend real --live`,
+   `SO101_ARM=left uv run gap run --backend real --live` - servos differ arm to arm, so measure both.
+7. **Reach policy per arm** (§10a): one training run per gripper type is enough when the arms are
    identical. Retrain if the gripper (mass, tool length) or the joint map differs. Mirror
    `TARGET_BOX` in y for an arm mounted facing the other way.
-9. **Order of work that paid off here:** calibration check → teleop → joint map + live twin →
-   intrinsics → wrist-camera extrinsics → policy in sim → dry run → slow live run → settle run →
-   closed-loop twin check.
+8. **Order of work that paid off here:** calibration check -> teleop -> joint map + live twin ->
+   intrinsics -> wrist-camera extrinsics -> arm-to-arm transform -> policy in sim -> dry run ->
+   slow live run -> settle run -> closed-loop twin check.
 
 ## Status of this setup (home bench)
 

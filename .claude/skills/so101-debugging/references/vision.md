@@ -6,7 +6,7 @@
 |---|---|---|
 | Wrong camera / swapped views | `config/cameras.yaml` uses `/dev/v4l/by-path/...` | Both eMeet C950 share serial `SN0001`, so `by-id` can't separate them; keep each camera in its USB port (workspace 2.2, wrist 2.1.4 via hub). Never hardcode `/dev/videoN` (it shuffles on replug). |
 | Colours/brightness drift between frames | auto-exposure + dynamic framerate | `uv run cam-setup` locks exposure 300, gain 10, WB 3800 K; **settings reset on replug** - rerun. |
-| Camera missing after replug | `uv run cam-setup --list` | re-plug into the same port; update `config/cameras.yaml` only if the port changed |
+| Camera missing after replug | `uv run cam-setup --list-paths` | re-plug into the same port; update `config/cameras.yaml` only if the port changed |
 
 ## Intrinsics (`uv run camcal capture|intrinsics <name>`)
 

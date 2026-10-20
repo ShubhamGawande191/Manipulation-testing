@@ -22,6 +22,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from robot_manipulator.profile import ACTIVE
+
 COUNTS_PER_TURN = 4096
 DEG_PER_COUNT = 360.0 / COUNTS_PER_TURN
 HOMING_LIMIT = 2048  # |homing_offset| above this is outside the sign-magnitude range
@@ -33,8 +35,8 @@ FIELDS = ("id", "drive_mode", "homing_offset", "range_min", "range_max")
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_STATS = REPO / "config" / "calibration_stats_so101.json"
 CACHE = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-DEFAULT_FOLLOWER = CACHE / "robots" / "so_follower" / "my_so101_follower.json"
-DEFAULT_LEADER = CACHE / "teleoperators" / "so_leader" / "my_so101_leader.json"
+DEFAULT_FOLLOWER = ACTIVE.calibration_json
+DEFAULT_LEADER = ACTIVE.leader_calibration_json
 
 
 @dataclass(frozen=True)
