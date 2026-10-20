@@ -81,16 +81,29 @@ tasks:
 
   # ---- next projects
   - id: ik-benchmark
-    title: IK benchmark - closed-form, DLS, NN-seeded hybrid, cuRobo (sim first)
+    title: IK benchmark in sim - closed-form, DLS, learned seed, hybrid (docs/IK-BENCHMARK.md)
     owner: agent
+    status: done
+    detail: Closed-form 100 %, hybrid NN+DLS 98 % at 0.5 ms, plain DLS 70 %. Straight-down presses reach ~30 cm forward.
+    link: docs/IK-BENCHMARK.md
+    updated: 2026-10-20
+  - id: curobo-install-ok
+    title: OK the cuRobo install (CUDA PyTorch, several GB) for the IK comparison
+    owner: you
     status: todo
-    detail: Real-arm comparison only after the kinematic calibration. Check the cuRobo licence.
-    updated: 2026-10-18
+    detail: Apache-2.0. Needs a URDF matching our SO-101 + PincOpen MJCF; runs on the RTX 3060.
+    updated: 2026-10-20
+  - id: curobo-comparison
+    title: Compare cuRobo (batched IK, collision-aware paths) on the same scenarios
+    owner: agent
+    status: waiting
+    waits_for: curobo-install-ok
+    updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions
     owner: you
     status: todo
-    detail: Feeds the atlas (push force per location) and the key-press skill.
+    detail: Feeds the atlas (push force per location) and the key-press skill. Straight-down presses reach ~10-28 cm in front of the base (ik-bench reach-map).
     updated: 2026-10-18
   - id: bimanual-port
     title: Port the twin runbook to the bimanual SO-101s at work
