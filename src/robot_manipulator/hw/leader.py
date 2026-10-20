@@ -56,13 +56,26 @@ def stow_pose(cfg: dict) -> np.ndarray:
     return pose
 
 
+BUS_RETRY = 3  # one dropped status packet aborted a run (servo 4, 2026-10-20): retry writes
+
+
 def torque_on(leader, torque_limit: int) -> np.ndarray:
-    """Goal = Present, torque limit, torque on. Returns the present pose."""
+    """Goal = Present, torque limit, torque on. Returns the present pose.
+
+    Writes are retried. If torque still can't be enabled on every joint, the joints that did
+    switch on are released again before re-raising, so the leader is never left half-energised.
+    """
     here = bus_pos(leader)
     send_goal(leader, here)  # enabling torque must not jump
     for motor in JOINTS:
-        leader.bus.write("Torque_Limit", motor, int(torque_limit))
-    leader.bus.enable_torque()
+        leader.bus.write("Torque_Limit", motor, int(torque_limit), num_retry=BUS_RETRY)
+    try:
+        leader.bus.enable_torque(num_retry=BUS_RETRY)
+    except Exception:
+        try:
+            leader.bus.disable_torque(num_retry=BUS_RETRY)
+        finally:
+            raise
     return here
 
 

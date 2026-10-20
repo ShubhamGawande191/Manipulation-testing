@@ -1,6 +1,7 @@
 from contextlib import nullcontext
 
 import numpy as np
+import pytest
 
 import robot_manipulator.hw.follower as fol
 from robot_manipulator.harness.cli import leader_clear
@@ -23,14 +24,14 @@ class FakeBus:
         )
         self.q.update(values)
 
-    def write(self, reg, motor, value):
+    def write(self, reg, motor, value, num_retry=0):
         self.log.append(f"{reg}={value}")
 
-    def enable_torque(self, motors=None):
+    def enable_torque(self, motors=None, num_retry=0):
         self.torque = True
         self.log.append("torque_on")
 
-    def disable_torque(self, motors=None):
+    def disable_torque(self, motors=None, num_retry=0):
         self.torque = False
         self.log.append("torque_off")
 
@@ -98,3 +99,20 @@ def test_leader_clear_only_for_real_live_runs():
     assert isinstance(leader_clear("real", False, True), nullcontext)
     assert isinstance(leader_clear("real", True, False), nullcontext)
     assert isinstance(leader_clear("real", True, True), LeaderStow)
+
+
+def test_torque_on_releases_the_leader_if_enabling_fails():
+    from robot_manipulator.hw.leader import torque_on
+
+    class Flaky(FakeBus):
+        def enable_torque(self, motors=None, num_retry=0):
+            self.torque_calls = getattr(self, "torque_calls", 0) + 1
+            raise ConnectionError("no status packet")
+
+    bus = Flaky(np.zeros(6))
+    disabled = []
+    bus.disable_torque = lambda motors=None, num_retry=0: disabled.append(True)
+    leader = type("L", (), {"bus": bus})()
+    with pytest.raises(ConnectionError):
+        torque_on(leader, 300)
+    assert disabled  # released before the error propagated
