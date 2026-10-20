@@ -34,7 +34,13 @@ import mujoco
 import numpy as np
 import typer
 
-from robot_manipulator.sim.model import ASSET_DIR, JOINTS, joint_qpos_adr, joint_ranges
+from robot_manipulator.sim.model import (
+    ASSET_DIR,
+    JOINTS,
+    joint_dof_adr,
+    joint_qpos_adr,
+    joint_ranges,
+)
 
 REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "runs" / "insertion"
@@ -66,6 +72,11 @@ class Factors:
     perception_mm: float = 0.0  # std of the error in the estimated hole position (x, y)
     trim: bool = False  # settle trim before the final descent
     trim_descent: bool = True  # keep the trim running during the descent (else frozen)
+    # model-based command correction (correct the action labels through the identified servo
+    # model instead of closing a loop): gravity feedforward q_cmd = q + tau_g(q) / k_est and play
+    # compensation (overshoot by b_est in the approach direction). k_est = k * model_scale,
+    # b_est = b * model_scale; 0 = off, 1 = exact model, 0.7 / 1.3 = 30 % wrong.
+    model_scale: float = 0.0
     chamfer_mm: float = 0.0
     tags: list[str] = field(default_factory=list)
 
@@ -242,6 +253,33 @@ class Plant:
         return self.d.geom_xpos[self.peg] + R[:, 0] * PEG_LEN / 2
 
 
+def _corrector(model, plant, f: Factors, q0: np.ndarray):
+    """q -> command that lands on q under the identified servo model (or identity when off)."""
+    if f.model_scale <= 0:
+        return lambda q: q
+    d = mujoco.MjData(model)
+    dof = joint_dof_adr(model, JOINTS)[:5]
+    k_est = model.actuator_gainprm[plant.act[:5], 0] * f.model_scale
+    b_est = np.radians(f.deadband_deg) * f.model_scale
+    state = {"last": np.asarray(q0, float).copy(), "dir": np.zeros(6)}
+
+    def correct(q):
+        q = np.asarray(q, float)
+        d.qpos[plant.qadr] = q
+        d.qvel[:] = 0.0
+        mujoco.mj_forward(model, d)
+        out = q.copy()
+        out[:5] += d.qfrc_bias[dof] / k_est  # static: k (q_cmd - q) = tau_gravity
+        moved = np.abs(q - state["last"]) > 1e-6
+        state["dir"][moved] = np.sign(q - state["last"])[moved]
+        state["last"] = q.copy()
+        if b_est > 0:  # the play operator lags the command by b: lead it in the motion direction
+            out[[1, 2, 3]] += b_est * state["dir"][[1, 2, 3]]
+        return out
+
+    return correct
+
+
 def run_episode(model, f: Factors, rng, hole_xy=HOLE_XY) -> dict:
     from robot_manipulator.ik.analytic import AnalyticIK
 
@@ -262,6 +300,7 @@ def run_episode(model, f: Factors, rng, hole_xy=HOLE_XY) -> dict:
     # settle above the hole (with trim: integral action until the joints sit on target)
     above = tip_target(top + 0.005, est)
     trim = np.zeros(6)
+    correct = _corrector(model, plant, f, start)
 
     def trim_step(target: np.ndarray) -> None:
         """Settle trim (software integral action, as deployed): bounded, with a deadband."""
@@ -276,7 +315,7 @@ def run_episode(model, f: Factors, rng, hole_xy=HOLE_XY) -> dict:
     for k in range(int(3.0 * HZ)):
         if f.trim:
             trim_step(above)
-        plant.step(above + trim)
+        plant.step(correct(above) + trim)
         q_now = plant.q()
         still = np.abs(q_now - q_prev)[:5].max() < np.radians(0.02)
         on_target = not f.trim or np.abs(above - q_now)[:5].max() < np.radians(0.2)
@@ -293,7 +332,7 @@ def run_episode(model, f: Factors, rng, hole_xy=HOLE_XY) -> dict:
             break
         if f.trim and f.trim_descent:
             trim_step(q)
-        plant.step(q + trim)
+        plant.step(correct(q) + trim)
         if plant.peg_bottom()[2] < top - DEPTH_M:
             pen = 1000 * plant.max_pen
             return {"ok": True, "lateral_mm": 1000 * lateral, "t": k / HZ, "pen_mm": pen}
@@ -317,6 +356,22 @@ FACTOR_SETS = {
     "perception 2mm": Factors(perception_mm=2.0),
     "all (as measured)": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, perception_mm=1.0),
     "all + trim": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, perception_mm=1.0, trim=True),
+    # correcting the action labels through the identified servo model vs closing a loop (trim)
+    "actuation (soft+play+lag)": Factors(deadband_deg=2.0, lag_ticks=3, soft=True),
+    "actuation + trim": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, trim=True),
+    "actuation + model": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=1.0),
+    "actuation + model -30%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=0.7),
+    "actuation + model +30%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=1.3),
+    "actuation + model -20%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=0.8),
+    "actuation + model -10%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=0.9),
+    "actuation + model +10%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=1.1),
+    "actuation + model +20%": Factors(deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=1.2),
+    "actuation + model + trim": Factors(
+        deadband_deg=2.0, lag_ticks=3, soft=True, model_scale=1.0, trim=True
+    ),
+    "all + model": Factors(
+        deadband_deg=2.0, lag_ticks=3, soft=True, perception_mm=1.0, model_scale=1.0
+    ),
     # does a chamfer need lateral give, and does the trim cancel it during the descent?
     "perception 1mm + soft + trim": Factors(soft=True, perception_mm=1.0, trim=True),
     "perception 1mm + soft + settle-only trim": Factors(

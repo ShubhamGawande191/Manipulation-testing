@@ -62,6 +62,29 @@ intervals:
 - Still a MuJoCo claim: perception error is modelled as centred Gaussian noise, the arm's lateral
   give comes from the twin. The printed-peg test decides it.
 
+**Model-based command correction vs closed loop** (insertion study, 100 paired episodes, no chamfer;
+`runs/insertion/sweep_20261020-223912.json`, `-224207.json`). Commands planned for an ideal actuator,
+run on the servo-like plant (2 deg play, 68 ms lag, soft P loop):
+
+| correction | 1 mm | 2 mm |
+|---|---|---|
+| none | 0 % [0-4] | 0 % [0-4] |
+| settle trim (closed loop) | 100 % [96-100] | 100 % [96-100] |
+| identified model: gravity feedforward + play lead, exact | 100 % [96-100] | 100 % [96-100] |
+| model -10 % / -20 % (k and play underestimated) | 100 % / 100 % | 100 % / 100 % |
+| model -30 % | 0 % [0-4] | 100 % [96-100] |
+| model +10 % / +20 % / +30 % | 0 % | 0 % |
+| model + trim | 100 % | 100 % |
+| with 1 mm perception error: model vs trim | 9 % vs 24 % | 45 % vs 62 % |
+
+- An exact servo model fixes the commands as well as the trim does, but it is brittle and lopsided:
+  overestimating stiffness/play by 10 % already fails everywhere (the play lead overshoots), while
+  underestimating by up to 20 % still works. The closed loop doesn't care.
+- With perception error the trim beats the model, paired: 22 vs 7 and 27 vs 10 discordant episodes
+  (McNemar p = 0.008 both). Practical rule: correct with a deliberately conservative (low) model and keep
+  a closed loop on top.
+- Still sim: the play model is a symmetric play operator; the real stop error may not be.
+
 **Intrinsic insertion challenge + `intrinsic-core` agent skills (read 2026-10-20).** What the winning
 teams did matches what the insertion study says:
 - Perception and action split: a CAD-based foundation pose model for sub-mm part poses (the open repo wires
