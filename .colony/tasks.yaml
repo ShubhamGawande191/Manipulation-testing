@@ -51,11 +51,11 @@ tasks:
     waits_for: wristcal-solve
     updated: 2026-10-18
   - id: real-reach-accuracy
-    title: Measure real fingertip accuracy of the reach policy after the joint fix
+    title: Run the fingertip accuracy + backlash test (hover over 6 board corners, 4 approaches each)
     owner: you
     status: todo
-    detail: Harness reach reports 0.42 cm, but that is in twin coordinates; the real error is unknown.
     updated: 2026-10-20
+    detail: "Fold the arm, `uv run tip-accuracy run --backend real --live` (~4 min). Planned + rehearsed in sim; 20 mm hover."
 
   # ---- twin + modelling
   - id: actuator-backlash
@@ -122,6 +122,17 @@ tasks:
     owner: agent
     status: todo
     link: docs/UPSTREAM-BUGS.md
+    updated: 2026-10-20
+  - id: backlash-dr
+    title: Backlash - per-joint deadband from all telemetry + tool play from tip-accuracy; add as DR
+    owner: agent
+    status: todo
+    detail: Encoder-side deadband from command/measure hysteresis at reversals (every logged run); play-operator model in the sim command path, width drawn per episode.
+    updated: 2026-10-20
+  - id: smooth-motion
+    title: Smooth motion - measure jerk/SPARC on all runs, then jerk-limited command layer + policy smoothness
+    owner: agent
+    status: todo
     updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions
