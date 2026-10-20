@@ -53,11 +53,45 @@ tasks:
   - id: real-reach-accuracy
     title: Run the fingertip accuracy + backlash test (hover over 6 board corners, 4 approaches each)
     owner: you
+    status: done
+    updated: 2026-10-20
+    detail: "Run 3 (40 mm, offsets applied, no contacts): in-plane error 10.5 mm raw -> 4.9 mm with settle trim; play between approaches 3.1 -> 1.3 mm. Leftover: -x bias 2-7 mm at every corner (tool model / board estimate)."
+
+  - id: tool-model-bias
+    title: Explain the -x fingertip bias left after the trim (2-7 mm, same sign at every corner)
+    owner: agent
     status: todo
     updated: 2026-10-20
-    detail: "Run 1 (20 mm hover) touched the board: servos stop 6-10 mm short (sag + deadband), fingertip ~6 mm longer than modelled. Rerun at 40 mm with contact guard + settle trim: `uv run tip-accuracy run --backend real --live` (~15 min)."
-
-  # ---- twin + modelling
+    detail: >-
+      Fit fingertip length (and board scale/pose) jointly from runs/accuracy/20261020-170433_real
+      trimmed arrivals; check against your ruler measurement of the closed fingertip (190 mm model).
+    waits_for: ruler-check
+  - id: insertion-study
+    title: Peg-in-hole factor study in MuJoCo (what breaks 1 mm vs 2 mm clearance)
+    owner: agent
+    status: done
+    updated: 2026-10-20
+    detail: >-
+      Trim fixes deadband + soft servo (0 -> 100 %); perception error decides 1 vs 2 mm (1 mm error, 1 mm
+      clearance 34 %); a 1 mm chamfer lifts it to 81 % (paired 47-0). docs/LAB-NOTEBOOK.md. Needs the printed-peg check.
+  - id: insertion-search-baseline
+    title: Insertion study - add a spiral search on contact (servo following error as the contact signal) vs chamfer
+    owner: agent
+    status: todo
+    updated: 2026-10-20
+    detail: Classical baseline the Intrinsic challenge winners used (with F/T). Paired vs chamfer at 1 and 2 mm, n = 100.
+  - id: servo-contact-resolution
+    title: Measure the smallest contact force the servo following error can detect (per joint, by approach direction)
+    owner: agent
+    status: todo
+    updated: 2026-10-20
+    detail: Push the fingertip into a kitchen scale at known depths; following error vs force. Sets whether search/recovery can work without an F/T sensor. Needs you at the arm for the live part.
+  - id: agent-skills-v1
+    title: Agent skills v1 - so101-concepts/robot-motion/debugging/experiments (intrinsic-core structure, our lessons)
+    owner: agent
+    status: done
+    updated: 2026-10-20
+    detail: .claude/skills/. Add a lesson to the matching reference whenever a failure costs real time.
   - id: actuator-backlash
     title: Model gear backlash/deadband + encoder quantization; re-run the closed-loop table
     owner: agent
@@ -141,16 +175,49 @@ tasks:
     detail: docs/blog/so101-servo-to-policy/; `uv run blog-figs`. Next figures - closed-loop twin table, accuracy raw vs trimmed, gain sweep.
     link: docs/blog/so101-servo-to-policy/README.md
     updated: 2026-10-20
-  - id: weigh-links
-    title: Weigh the SO-101 links and the PincOpen gripper + camera (for the blog and the twin)
-    owner: you
+  - id: servo-animation
+    title: Animated STS3215 explainer for the blog (motor, 1:345 gears, encoder, P/D loop with I = 0, deadband)
+    owner: agent
     status: todo
-    detail: Kitchen scale; the model's numbers are estimates (gripper + camera 212 g).
+    detail: Schematic from public specs + our register reads, driven by our measured step response; replaces the teardown photo.
     updated: 2026-10-20
-  - id: servo-teardown-photo
-    title: Photo or teardown of a spare STS3215 (gear train, encoder, board) for the blog
-    owner: you
+  - id: link-mass-dr
+    title: Link masses - keep the model values, widen mass DR, and say so in the blog (replaces weighing)
+    owner: agent
     status: todo
+    detail: Reach DR already scales link masses x U(0.9, 1.1) and adds a 0-90 g payload (real gripper + camera may be up to ~300 g vs 212 g modelled - widen it).
+    updated: 2026-10-20
+  - id: gain-sweep
+    title: Tune to Learn on hobby servos - sweep P / I / acceleration registers, measure each, then train + deploy per setting
+    owner: agent
+    status: todo
+    detail: >-
+      Step 1 (agent) - `servo-gains` tool that writes, logs and restores the registers and runs the step/stop/stiffness tests.
+      Step 2 (you, arm present) - run it. Step 3 - twin + reach policy per setting; success, settle error, jerk, hunting, with intervals.
+    updated: 2026-10-20
+  - id: sag-feedforward
+    title: Sag feedforward - command q + tau_gravity(q)/k from the measured spring constants; trim only fixes the rest
+    owner: agent
+    status: todo
+    detail: Compare against the settle trim on tip-accuracy (same targets, paired). Also - pick IK branches/postures by gravity load.
+    updated: 2026-10-20
+  - id: twin-closed-loop-fix
+    title: Why the better-fitting twin trains a worse policy - play-operator model, fit on closed-loop logs, DR spanning nominal..fit
+    owner: agent
+    status: todo
+    detail: Accept a twin only if `gap closed-loop` reproduces both real behaviours (box calm, fit hunts). Optional - actuator net (GapONet / ANYmal-style) as a third candidate.
+    updated: 2026-10-20
+  - id: agent-skills-mcp
+    title: ASPIRE-style agent interface - harness skills as MCP tools + AGENTS.md rules (sim only first)
+    owner: agent
+    status: todo
+    detail: docs/RESEARCH-deployment-harness.md section 5 and backlog item 8. Verified physical predicates = our end conditions; no agent access to hardware.
+    updated: 2026-10-20
+  - id: eval-protocol
+    title: Eval protocol module - held-out initial states, Wilson intervals, paired comparisons, stage outcomes
+    owner: agent
+    status: todo
+    detail: docs/RESEARCH-deployment-harness.md backlog item 1; the insertion study now has the first version (intervals + McNemar).
     updated: 2026-10-20
   - id: minilab-press-force
     title: Kitchen-scale press-force measurements at MiniLab key positions

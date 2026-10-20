@@ -1,6 +1,11 @@
 ---
 name: bench-check
-description: Verify SO101 bench hardware (arm serial, both cameras, MiniLab 3 MIDI) after a desktop reboot, USB replug, or whenever a device seems missing or camera indices look wrong. Run this before any task that touches hardware.
+description: >-
+  Verify SO-101 bench hardware (follower/leader serial, both cameras, MiniLab 3 MIDI) after a reboot, USB replug,
+  or when a device seems missing or camera indices look wrong. Run before any task that touches hardware.
+  Triggers: device missing, port not found, camera swapped or missing, MIDI port absent, after reboot/replug.
+  Subsystems: USB/udev, /dev/so101_*, v4l by-path cameras, ALSA MIDI.
+  Anti-keywords: servo behaviour or calibration problems (so101-debugging), building the twin (digital-twin).
 ---
 
 # Bench check

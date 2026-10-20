@@ -1,6 +1,14 @@
 ---
 name: digital-twin
-description: Build or validate a MuJoCo digital twin of a real SO-101 setup (single or bimanual) - arm calibration vs fleet stats, partial recalibration, staged teleop check, end-effector MJCF swap, sim2real joint map with the live twin, stable camera paths + locked exposure, ChArUco intrinsics, camera extrinsics, scene fixtures, actuator fit. Use when setting up a new SO-101 bench, after recalibrating an arm, swapping a gripper, moving a camera, or when sim and real disagree.
+description: >-
+  Build or validate a MuJoCo digital twin of a real SO-101 setup (single or bimanual): calibration vs fleet,
+  partial recalibration, staged teleop check, end-effector MJCF, sim2real joint map with the live twin, stable
+  camera paths + locked exposure, ChArUco intrinsics, wrist-camera extrinsics, fingertip accuracy, scene
+  fixtures, actuator fit.
+  Triggers: new SO-101 bench, after recalibrating an arm, swapping a gripper, moving a camera, sim and real
+  disagree, porting to the bimanual setup.
+  Subsystems: calib/, cameras.py, sim/model.py, harness/units.py, sim/gap/, config/sim2real.yaml.
+  Anti-keywords: one-off debugging of a known setup (so101-debugging), experiment reporting (so101-experiments).
 ---
 
 # Digital twin

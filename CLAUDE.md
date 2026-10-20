@@ -65,12 +65,21 @@ Hardware tests are marked `@pytest.mark.hw` and deselected by default (`addopts 
 
 `docs/DIGITAL-TWIN-RUNBOOK.md` is the step-by-step procedure (and status table) for building/validating the MuJoCo twin of a real SO-101 bench — calibration, teleop check, end-effector MJCF, joint map + live twin, cameras, extrinsics, scene, actuator fit. Keep its status table and lessons current when any of those stages change. The `digital-twin` skill points to it.
 
+## Agent skills (`.claude/skills/`)
+
+Start from `so101-concepts` (hub: control paths, units, hard rules, which tool for which question). It routes to
+`so101-robot-motion` (live arm protocol), `so101-debugging` (layer-first triage, per-layer references),
+`so101-experiments` (n + intervals, validity checks, reporting; the no-hype rules), `digital-twin` and
+`bench-check`. Each skill has decision trees, paired guardrails, a pre-action checkpoint, a retry cap and
+completion criteria; add a lesson to the matching reference when a failure costs real time.
+
 ## Lab board (`.colony/tasks.yaml`)
 
 `.colony/tasks.yaml` is the repo's to-do list, shown as bots in Bot Crossing (`uv run colony-feed`;
 see `integrations/bot-crossing/README.md`). Keep it current: when you start a task set
 `status: doing`, when you stop set `done` or `waiting` (with `waits_for`), and bump `updated`. Add
-anything that needs the user (hardware runs, measurements, data collection) as `owner: you`.
+anything that needs the user (hardware runs, measurements, data collection) as `owner: you`. Tasks that must not be
+public go in `.colony/tasks.private.yaml` (gitignored, same format, shown on the same board).
 
 ## Repo hygiene note
 

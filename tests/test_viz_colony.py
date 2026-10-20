@@ -55,6 +55,19 @@ def test_tasks_become_bots_in_the_repo_zone(tmp_path):
     assert t["ancient"]["archived"] and "prState" not in t["ancient"]
 
 
+def test_private_overlay_adds_tasks_and_bad_overlay_is_ignored(tmp_path):
+    repo = tmp_path / "myrepo"
+    (repo / ".colony").mkdir(parents=True)
+    (repo / ".colony" / "tasks.yaml").write_text("tasks:\n  - {id: pub, title: Public}\n")
+    (repo / ".colony" / "tasks.private.yaml").write_text("tasks:\n  - {id: priv, title: Private}\n")
+    now = int(1000 * time.time())
+    ids = {x["id"].split(":")[-1] for x in build_feed([repo], now_ms=now)["threads"]}
+    assert ids == {"pub", "priv"}
+    (repo / ".colony" / "tasks.private.yaml").write_text("tasks: [unclosed")
+    ids = {x["id"].split(":")[-1] for x in build_feed([repo], now_ms=now)["threads"]}
+    assert ids == {"pub"}
+
+
 def test_only_latest_run_per_kind_and_running_ones(tmp_path):
     repo = tmp_path / "bench"
     real = {"backend": "real", "live": True, "policy": "p/a/reach.onnx"}

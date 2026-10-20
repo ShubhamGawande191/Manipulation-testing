@@ -63,3 +63,6 @@ logs/
 calibration_images/
 config/bench_state.json
 runs/
+
+# Lab board tasks that must stay private
+.colony/tasks.private.yaml

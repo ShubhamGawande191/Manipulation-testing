@@ -8,7 +8,8 @@ zone:
   to-dos (``owner: you``, ``status: todo``) hold a ``?``: data collection, measurements, live
   runs, anything an agent cannot do itself. Work in progress (``doing``) hammers, ``failed``
   slumps with ``!``, ``waiting`` (on another task) potters, and ``done`` celebrates for two days,
-  then leaves the map.
+  then leaves the map. ``<repo>/.colony/tasks.private.yaml`` (same format, gitignored) adds tasks
+  that must not be pushed with a public repo.
 - **robot runs** (repos with ``runs/``, i.e. this one): only the latest run of each kind from the
   last two days, plus anything being written right now. Older runs stay on disk, off the map.
 
@@ -42,6 +43,7 @@ FEED = Path(
 CONFIG = HOME / ".config" / "lab-colony" / "projects.yaml"
 SEARCH_ROOTS = [HOME / d for d in ("Desktop", "projects", "code", "src")]
 TASKS_FILE = Path(".colony") / "tasks.yaml"
+PRIVATE_TASKS_FILE = Path(".colony") / "tasks.private.yaml"  # gitignored overlay, same format
 RUN_WINDOW_DAYS = 2.0
 DONE_SHOWN_DAYS = 2.0
 RUNNING_S = 30.0
@@ -118,8 +120,15 @@ def _date_ms(v: Any, fallback: int) -> int:
 
 
 def task_threads(repo: Path, now_ms: int) -> list[dict]:
-    """Bots for ``<repo>/.colony/tasks.yaml``; malformed entries are skipped, not fatal."""
-    f = repo / TASKS_FILE
+    """Bots for ``<repo>/.colony/tasks.yaml`` plus the private overlay; malformed entries or files
+    are skipped, not fatal."""
+    out = []
+    for name in (TASKS_FILE, PRIVATE_TASKS_FILE):
+        out += _file_tasks(repo, repo / name, now_ms)
+    return out
+
+
+def _file_tasks(repo: Path, f: Path, now_ms: int) -> list[dict]:
     try:
         doc = yaml.safe_load(f.read_text()) or {}
     except (OSError, yaml.YAMLError):
@@ -138,7 +147,7 @@ def task_threads(repo: Path, now_ms: int) -> list[dict]:
         if status == "waiting" and task.get("waits_for"):
             title += f" (waits for {task['waits_for']})"
         link = task.get("link")
-        target = (repo / link) if link else (repo / TASKS_FILE)
+        target = (repo / link) if link else f
         out.append(
             _base(
                 f"task:{repo.name}:{task['id']}",
