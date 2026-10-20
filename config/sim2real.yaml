@@ -9,13 +9,20 @@
 # while calibrated is false.
 # H2 done 2026-10-17: signs/offsets validated with the live twin (`uv run twin`) against the real
 # follower (calibration rewritten by calib-recal the same day; MJCF "new calib" zero = range midpoint).
+# Encoder offsets 2026-10-20: joint bundle adjustment of two wrist-camera calibration sessions
+# (`uv run camcal-wrist solve-joint --fit-scale runs/wristcal/20261018-204825_real
+# runs/wristcal/20261020-142141_real`; different boards and placements; board print scales fitted,
+# the new board's came out 0.9996). Pan and wrist_roll offsets are not observable that way (pan
+# rotates everything rigidly, roll is absorbed by the camera mount) and stay 0. Before: all 0.
+# The real backend clips commands to each joint's calibrated travel, so a shifted sim limit can't
+# drive a joint into its stop (elbow: sim box +94 deg -> real 98.7 deg vs 97.5 deg travel).
 calibrated: true
 
 joints:
   shoulder_pan: {sign: 1, offset_deg: 0.0}   # H2: validated 2026-10-17
-  shoulder_lift: {sign: 1, offset_deg: 0.0}  # H2: validated 2026-10-17
-  elbow_flex: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
-  wrist_flex: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
+  shoulder_lift: {sign: 1, offset_deg: 4.61}   # wrist-camera calibration, +-1.06 (see below)
+  elbow_flex: {sign: 1, offset_deg: -4.75}     # wrist-camera calibration, +-0.48
+  wrist_flex: {sign: 1, offset_deg: -4.58}     # wrist-camera calibration, +-0.29
   wrist_roll: {sign: 1, offset_deg: 0.0}     # H2: validated 2026-10-17
 
 # Linear map. LeRobot value lerobot_open maps to sim_open, and lerobot_closed maps to

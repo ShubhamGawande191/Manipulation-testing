@@ -29,10 +29,9 @@ tasks:
   - id: apply-joint-offsets
     title: Put the confirmed lift/elbow/wrist_flex offsets into config/sim2real.yaml
     owner: agent
-    status: waiting
-    waits_for: two calibration sessions that agree
-    detail: Touch session says elbow about -9 deg. Needs a second, agreeing session before writing.
-    updated: 2026-10-18
+    status: done
+    detail: "lift +4.61, elbow -4.75, wflex -4.58 deg in config/sim2real.yaml; real backend clips to calibrated travel."
+    updated: 2026-10-20
   - id: reprint-board
     title: Reprint the ChArUco board (100 % scale, matte) and paste it flat on a rigid backing
     owner: you
@@ -42,9 +41,9 @@ tasks:
   - id: second-wristcal
     title: Second wrist-camera calibration run (board moved) to confirm the offsets
     owner: you
-    status: todo
+    status: done
     updated: 2026-10-20
-    detail: "Planned from the overhead camera (24 views, arm stays >8 cm from the reset tray). Fold the arm, then `uv run camcal-wrist run --backend real --live`."
+    detail: "24/24 views; joint fit with run 1 agrees (board scales fitted)."
   - id: scene-camera-check
     title: Rebuild the bench scene with the calibrated camera; overlay sim vs real views
     owner: agent
@@ -54,10 +53,9 @@ tasks:
   - id: real-reach-accuracy
     title: Measure real fingertip accuracy of the reach policy after the joint fix
     owner: you
-    status: waiting
-    waits_for: apply-joint-offsets
+    status: todo
     detail: Harness reach reports 0.42 cm, but that is in twin coordinates; the real error is unknown.
-    updated: 2026-10-18
+    updated: 2026-10-20
 
   # ---- twin + modelling
   - id: actuator-backlash

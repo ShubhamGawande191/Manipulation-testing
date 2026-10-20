@@ -374,6 +374,113 @@ def solve(
     }
 
 
+def solve_joint(
+    rig: WristRig, sessions: list[dict], offsets=OFFSET_JOINTS, fit_scale: bool = False
+) -> dict:
+    """Bundle adjustment over several sessions: one camera mount and one set of joint offsets,
+    one board pose per session (the board moves between sessions, the camera mount does not).
+    ``sessions[k]`` = ``load_session`` output with ``R0``/``t0`` (initial board pose).
+    ``fit_scale``: also fit each board's print scale (its square size is a hand measurement; the
+    arm's link lengths give the absolute scale)."""
+    from scipy.optimize import least_squares
+
+    n_s, n_off = len(sessions), len(offsets)
+    m0 = 6 * n_s
+    sc0 = m0 + 6 + n_off  # per-session log scale, after the offsets
+
+    def unpack(x):
+        boards = [
+            (_rot(x[6 * k : 6 * k + 3]) @ s["R0"], s["t0"] + x[6 * k + 3 : 6 * k + 6])
+            for k, s in enumerate(sessions)
+        ]
+        mount = (_rot(x[m0 : m0 + 3]) @ rig.R_mount0, rig.t_mount0 + x[m0 + 3 : m0 + 6])
+        off = np.zeros(6)
+        off[list(offsets)] = x[m0 + 6 : m0 + 6 + n_off]
+        scales = np.exp(x[sc0 : sc0 + n_s]) if fit_scale else np.ones(n_s)
+        return boards, mount, off, scales
+
+    def residual(x):
+        boards, mount, off, scales = unpack(x)
+        out = []
+        for (R_rb, t_rb), s, sc in zip(boards, sessions, scales):
+            for q, (P, uv) in zip(s["qs"], s["obs"]):
+                R_rc, p_rc = rig.camera(q + off, mount)
+                pred, z = project(s["K"], R_rc, p_rc, (sc * P) @ R_rb.T + t_rb)
+                out.append(np.where(z[:, None] > 0, pred - uv, 1e3).ravel())
+        return np.concatenate(out)
+
+    sol = least_squares(
+        residual,
+        np.zeros(sc0 + (n_s if fit_scale else 0)),
+        loss="soft_l1",
+        f_scale=2.0,
+        x_scale="jac",
+    )
+    boards, mount, off, scales = unpack(sol.x)
+    r = sol.fun.reshape(-1, 2)
+    per_session, k = [], 0
+    for s in sessions:
+        n = sum(len(uv) for _, uv in s["obs"])
+        per_session.append(float(np.sqrt(np.mean(np.sum(r[k : k + n] ** 2, 1)))))
+        k += n
+    sigma2 = float(np.sum(sol.fun**2) / max(len(sol.fun) - len(sol.x), 1))
+    try:
+        std = np.sqrt(np.clip(np.diag(np.linalg.inv(sol.jac.T @ sol.jac) * sigma2), 0, None))
+    except np.linalg.LinAlgError:
+        std = np.full(len(sol.x), np.nan)
+    return {
+        "boards": boards,
+        "mount": mount,
+        "mount_shift_m": float(np.linalg.norm(sol.x[m0 + 3 : m0 + 6])),
+        "mount_rot_deg": float(np.degrees(np.linalg.norm(sol.x[m0 : m0 + 3]))),
+        "offsets_rad": {JOINTS[j]: float(off[j]) for j in offsets},
+        "offsets_std_rad": {JOINTS[j]: float(std[m0 + 6 + i]) for i, j in enumerate(offsets)},
+        "rms_px_per_session": per_session,
+        "board_scales": scales.tolist(),
+    }
+
+
+def load_session(session_dir: Path) -> dict:
+    """Wrist views of a session: joints, undistorted corner observations, own intrinsics. The
+    board spec is the session's ``board.yaml`` (saved by ``run``), else the current config."""
+    import cv2
+
+    from robot_manipulator.calib.camera import calibrate
+
+    s = json.loads((session_dir / "session.json").read_text())
+    spec = session_dir / "board.yaml"
+    board, _ = make_board(spec) if spec.exists() else make_board()
+    views, qs = [], []
+    for v in s["views"]:
+        g = cv2.imread(str(session_dir / v["wrist"]), cv2.IMREAD_GRAYSCALE)
+        if g is None:
+            continue
+        # the closed fingers hide the board's near rows: 8 corners per view are plenty for the BA
+        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
+        if cc is not None:
+            views.append(g)
+            qs.append(np.array(v["q_rad"]))
+    if len(views) < 8:
+        raise ValueError(f"{session_dir}: only {len(views)} wrist views see the board")
+    intr = calibrate(board, views, (IMG_W, IMG_H))  # uses views with >= 12 corners
+    K, dist = np.array(intr["camera_matrix"]), np.array(intr["dist_coeffs"])
+    obs = []
+    for g in views:
+        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
+        P, uv = board.matchImagePoints(cc, ci)
+        und = cv2.undistortPoints(uv.reshape(-1, 1, 2), K, dist, P=K).reshape(-1, 2)
+        obs.append((P.reshape(-1, 3).astype(float), und))
+    return {
+        "dir": session_dir,
+        "n_views": len(s["views"]),
+        "qs": np.array(qs),
+        "obs": obs,
+        "K": K,
+        "intr": intr,
+        "board": board,
+    }
+
+
 def _initial_board(rig, qs, obs, K) -> tuple[np.ndarray, np.ndarray]:
     """Board pose from the median single-view PnP with the nominal mount and FK."""
     import cv2
@@ -501,6 +608,9 @@ def run(
     home = np.clip(np.r_[HOME_ARM, 0.0], lo + 0.05, hi - 0.05)
     out = OUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}_{backend}"
     out.mkdir(parents=True, exist_ok=True)
+    from robot_manipulator.calib.camera import BOARD_CFG
+
+    (out / "board.yaml").write_text(BOARD_CFG.read_text())  # the solve needs this session's board
     capture = backend == "real"
     if backend == "sim":
         be: Any = SimBackend(model=model, hz=50.0)
@@ -575,36 +685,11 @@ def solve_cmd(
     holdout: float = typer.Option(0.2, help="fraction of views held out to validate the fit"),
 ) -> None:
     """Bundle-adjust board pose, wrist-camera mount and joint offsets; report and validate."""
-    import cv2
-
-    from robot_manipulator.calib.camera import calibrate
-
-    s = json.loads((session_dir / "session.json").read_text())
-    board, _ = make_board()
-    views, qs = [], []
-    for v in s["views"]:
-        g = cv2.imread(str(session_dir / v["wrist"]), cv2.IMREAD_GRAYSCALE)
-        if g is None:
-            continue
-        # the closed fingers hide the board's near rows: 8 corners per view are plenty for the BA
-        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
-        if cc is not None:
-            views.append(g)
-            qs.append(np.array(v["q_rad"]))
-    typer.echo(f"{len(views)}/{len(s['views'])} wrist views with the board")
-    if len(views) < 8:
-        raise typer.Exit(1)
-    intr = calibrate(board, views, (IMG_W, IMG_H))  # uses views with >= 12 corners
-    K, dist = np.array(intr["camera_matrix"]), np.array(intr["dist_coeffs"])
+    ses = load_session(session_dir)
+    qs, obs, K, intr, board = ses["qs"], ses["obs"], ses["K"], ses["intr"], ses["board"]
+    typer.echo(f"{len(qs)}/{ses['n_views']} wrist views with the board")
     typer.echo(f"wrist intrinsics: rms {intr['rms_px']:.2f} px, fx {K[0, 0]:.0f}")
-    obs = []
-    for g in views:
-        cc, ci = detect(board, g, min_corners=BA_MIN_CORNERS)
-        P, uv = board.matchImagePoints(cc, ci)
-        und = cv2.undistortPoints(uv.reshape(-1, 1, 2), K, dist, P=K).reshape(-1, 2)
-        obs.append((P.reshape(-1, 3).astype(float), und))
     rig = WristRig()
-    qs = np.array(qs)
     R0, t0 = _initial_board(rig, qs, obs, K)
     rng = np.random.default_rng(0)
     test = rng.random(len(obs)) < holdout
@@ -624,6 +709,59 @@ def solve_cmd(
     best = rows[-1][1]
     if write:
         _write_results(session_dir, best, intr, board)
+
+
+@app.command("solve-joint")
+def solve_joint_cmd(
+    session_dirs: list[Path],
+    fit_scale: bool = typer.Option(False, help="also fit each board's print scale"),
+) -> None:
+    """One fit over several sessions (shared mount + joint offsets); compare with each alone."""
+    rig = WristRig()
+    sessions = []
+    for d in session_dirs:
+        ses = load_session(d)
+        ses["R0"], ses["t0"] = _initial_board(rig, ses["qs"], ses["obs"], ses["K"])
+        alone = solve(rig, ses["qs"], ses["obs"], ses["K"], ses["R0"], ses["t0"])
+        ses["alone"] = alone
+        sessions.append(ses)
+        offs = ", ".join(f"{j} {np.degrees(v):+.2f}°" for j, v in alone["offsets_rad"].items())
+        typer.echo(f"{d.name}: {len(ses['qs'])} views, alone rms {alone['rms_px']:.2f} px | {offs}")
+    fit = solve_joint(rig, sessions, fit_scale=fit_scale)
+    typer.echo(
+        "joint fit, rms per session (px): "
+        + ", ".join(f"{r:.2f}" for r in fit["rms_px_per_session"])
+        + f" | mount Δ {1000 * fit['mount_shift_m']:.0f} mm / {fit['mount_rot_deg']:.1f}°"
+    )
+    if fit_scale:
+        typer.echo(
+            "board scale vs its config: "
+            + ", ".join(f"{d.name} {sc:.4f}" for d, sc in zip(session_dirs, fit["board_scales"]))
+        )
+    typer.echo(
+        "joint offsets: "
+        + ", ".join(
+            f"{j} {np.degrees(v):+.2f}±{np.degrees(fit['offsets_std_rad'][j]):.2f}°"
+            for j, v in fit["offsets_rad"].items()
+        )
+    )
+    out = OUT_DIR / f"joint_{datetime.now():%Y%m%d-%H%M%S}.json"
+    out.write_text(
+        json.dumps(
+            {
+                "sessions": [str(d) for d in session_dirs],
+                "offsets_deg": {j: float(np.degrees(v)) for j, v in fit["offsets_rad"].items()},
+                "offsets_std_deg": {
+                    j: float(np.degrees(v)) for j, v in fit["offsets_std_rad"].items()
+                },
+                "rms_px_per_session": fit["rms_px_per_session"],
+                "board_scales": fit["board_scales"],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    typer.echo(f"-> {out}")
 
 
 def solve_eval(rig, qs, obs, K, fit) -> float:

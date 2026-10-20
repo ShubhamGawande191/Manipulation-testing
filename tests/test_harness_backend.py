@@ -231,3 +231,26 @@ def test_sim_backend_actuator_fit_per_joint_delay():
         be.command(step)
         seen.append(be.data.ctrl[be._act][[0, 2]].copy())
     assert np.allclose(seen, [[0.0, 0.1], [0.0, 0.1], [0.1, 0.1]])  # pan 2 ticks late
+
+
+def test_commands_are_clipped_to_the_calibrated_travel():
+    from types import SimpleNamespace
+
+    from robot_manipulator.harness.backend import (
+        TRAVEL_MARGIN_DEG,
+        clip_to_travel,
+        travel_limits_deg,
+    )
+
+    robot = SimpleNamespace(
+        calibration={
+            "elbow_flex": SimpleNamespace(range_min=900, range_max=3118),  # +-97.5 deg
+            "gripper": SimpleNamespace(range_min=2005, range_max=3200),  # not a body joint
+        }
+    )
+    travel = travel_limits_deg(robot)
+    assert set(travel) == {"elbow_flex"} and travel["elbow_flex"] == pytest.approx(97.5, abs=0.1)
+    out = clip_to_travel({"elbow_flex.pos": 98.7, "gripper.pos": 50.0}, travel)
+    assert out["elbow_flex.pos"] == pytest.approx(97.5 - TRAVEL_MARGIN_DEG, abs=0.1)
+    assert out["gripper.pos"] == 50.0
+    assert clip_to_travel({"elbow_flex.pos": 10.0}, travel)["elbow_flex.pos"] == 10.0

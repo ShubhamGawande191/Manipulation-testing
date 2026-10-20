@@ -238,6 +238,40 @@ def _connect(port: str, robot_id: str, live: bool):
     return robot
 
 
+TRAVEL_MARGIN_DEG = 1.0
+
+
+def travel_limits_deg(robot: Any) -> dict[str, float]:
+    """Half of each body joint's calibrated travel in LeRobot degrees (degree zero is the middle
+    of the calibrated range, so the travel is +-half). Empty if the robot has no calibration
+    (test doubles)."""
+    cal = getattr(robot, "calibration", None) or {}
+    out = {}
+    for name, c in cal.items():
+        lo, hi = getattr(c, "range_min", None), getattr(c, "range_max", None)
+        if name != "gripper" and lo is not None and hi is not None:
+            out[name] = (hi - lo) / 2 * 360 / 4095
+    return out
+
+
+def clip_to_travel(vals: dict[str, float], travel: dict[str, float]) -> dict[str, float]:
+    """Last-line guard: never command a body joint past its calibrated travel (minus a margin),
+    whatever the joint map offsets or the sim limits say. The sim command box is the MJCF range;
+    with encoder offsets in config/sim2real.yaml it can map up to a few degrees past a stop."""
+    out = dict(vals)
+    for name, half in travel.items():
+        key = f"{name}.pos"
+        if key in out:
+            lim = half - TRAVEL_MARGIN_DEG
+            clipped = float(np.clip(out[key], -lim, lim))
+            if clipped != out[key]:
+                log.debug(
+                    "clipped %s %.1f -> %.1f deg (calibrated travel)", name, out[key], clipped
+                )
+            out[key] = clipped
+    return out
+
+
 class LeRobotBackend:
     """Real SO101 follower through LeRobot. Refuses live commands until the joint map is calibrated.
 
@@ -269,6 +303,7 @@ class LeRobotBackend:
         self._robot = robot if robot is not None else _connect(port, robot_id, live=not dry_run)
         self._last_t: float | None = None
         self._last_q: np.ndarray | None = None
+        self._travel_deg = travel_limits_deg(self._robot)
         self.telemetry = None
         if self._owns_hw:
             from robot_manipulator.hw.telemetry import TelemetryLogger
@@ -295,7 +330,7 @@ class LeRobotBackend:
         return {"t": t, "q": q, "dq": dq}
 
     def command(self, q_target: np.ndarray) -> None:
-        vals = self.joint_map.sim_to_lerobot(_check_q(q_target))
+        vals = clip_to_travel(self.joint_map.sim_to_lerobot(_check_q(q_target)), self._travel_deg)
         self.last_command = vals
         if self.dry_run:
             log.debug("dry-run: would send %s", vals)

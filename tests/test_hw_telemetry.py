@@ -22,8 +22,21 @@ class FakeBus:
         return {j: val for j in JOINTS}
 
 
+def _zero_offset_map(tmp_path):
+    """The repo's joint map with all encoder offsets zeroed: this test checks the unit conversion,
+    not the calibration values (config/sim2real.yaml has real offsets since 2026-10-20)."""
+    import yaml
+
+    cfg = yaml.safe_load((REPO / "config" / "sim2real.yaml").read_text())
+    for j in cfg["joints"].values():
+        j["offset_deg"] = 0.0
+    path = tmp_path / "sim2real_zero.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    return JointMap.from_yaml(path)
+
+
 def test_records_both_unit_systems_and_extras_every_n(tmp_path):
-    jm = JointMap.from_yaml(REPO / "config" / "sim2real.yaml")
+    jm = _zero_offset_map(tmp_path)
     tl = TelemetryLogger("test", "fake_arm", joint_map=jm, extra_every=3, out_dir=tmp_path)
     bus = FakeBus()
     for k in range(7):
