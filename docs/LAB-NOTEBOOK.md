@@ -85,6 +85,25 @@ run on the servo-like plant (2 deg play, 68 ms lag, soft P loop):
   a closed loop on top.
 - Still sim: the play model is a symmetric play operator; the real stop error may not be.
 
+**Sim commands replayed on the real arm** (`insertion-study export-motion`, `gap run --live` x3 at
+0.5 rad/s, `replay-check`; runs/gap/20261020-2311**_real). The scripted straight-down insertion from the
+twin, raised 30 mm into free air, replayed open loop on the home SO-101. Peg-tip position from the
+encoders (FK) in the final hold:
+
+| run | real vs command, lateral | z | per-joint error lift / elbow / wflex |
+|---|---|---|---|
+| 1 | 3.22 mm (dx -3.22) | -1.24 mm | +0.27 / +0.24 / +0.46 deg |
+| 2 | 2.87 mm (dx -2.87) | -1.04 mm | +0.27 / +0.15 / +0.46 deg |
+| 3 | 3.39 mm (dx -3.39) | -1.46 mm | +0.35 / +0.24 / +0.46 deg |
+
+- The twin predicts 0.2 mm; the arm lands ~3.2 mm short toward the base and ~1.2 mm low, repeatable
+  to +-0.25 mm. Each joint is only 0.15-0.46 deg off, but all in the same direction (sag + stop error),
+  so they add up at the tip.
+- Systematic, not random: correctable (trim, or a conservative feedforward), but uncorrected it already
+  exceeds a 1 mm-chamfer capture range at 1 and 2 mm clearance.
+- Encoders only: link flex and the tool model are extra (tip-accuracy found a further 2-7 mm bias in
+  the same -x direction), so the world-frame error of open-loop sim commands is larger still.
+
 **Intrinsic insertion challenge + `intrinsic-core` agent skills (read 2026-10-20).** What the winning
 teams did matches what the insertion study says:
 - Perception and action split: a CAD-based foundation pose model for sub-mm part poses (the open repo wires
